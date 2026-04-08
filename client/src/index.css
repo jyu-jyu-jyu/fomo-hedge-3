@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* HBS crimson-inspired palette — clean, institutional, warm */
+    --background: 30 20% 97%;
+    --foreground: 220 15% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 15% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 13%;
+
+    /* Crimson primary */
+    --primary: 350 72% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 18% 93%;
+    --secondary-foreground: 220 15% 25%;
+
+    --muted: 30 12% 94%;
+    --muted-foreground: 220 8% 52%;
+
+    --accent: 350 72% 35%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 75% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 12% 87%;
+    --input: 30 12% 87%;
+    --ring: 350 72% 35%;
+
+    --radius: 0.5rem;
+
+    /* Semantic colors */
+    --color-success: 142 60% 30%;
+    --color-warning: 38 85% 42%;
+    --color-danger: 350 72% 35%;
+  }
+
+  .dark {
+    --background: 220 15% 9%;
+    --foreground: 30 10% 88%;
+
+    --card: 220 14% 12%;
+    --card-foreground: 30 10% 88%;
+
+    --popover: 220 14% 12%;
+    --popover-foreground: 30 10% 88%;
+
+    --primary: 350 60% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 12% 18%;
+    --secondary-foreground: 30 10% 75%;
+
+    --muted: 220 12% 16%;
+    --muted-foreground: 220 8% 52%;
+
+    --accent: 350 60% 58%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 10% 22%;
+    --input: 220 10% 22%;
+    --ring: 350 60% 58%;
+
+    --color-success: 142 50% 48%;
+    --color-warning: 38 75% 58%;
+    --color-danger: 350 60% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    min-height: 100dvh;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+}
+
+/* Likelihood gradient pill */
+.likelihood-high { @apply bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300; }
+.likelihood-medium { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300; }
+.likelihood-low { @apply bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300; }
+
+/* Smooth slider */
+input[type=range] {
+  accent-color: hsl(var(--primary));
+}
+
+/* Card hover */
+.ticket-card {
+  transition: box-shadow 180ms ease, transform 180ms ease;
+}
+.ticket-card:hover {
+  box-shadow: 0 4px 20px hsl(var(--foreground) / 0.08);
+  transform: translateY(-1px);
+}
