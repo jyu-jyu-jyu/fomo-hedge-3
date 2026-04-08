@@ -395,10 +395,14 @@ function ImportTab() {
     }
   }, []);
 
-  const { data: connections = [], refetch: refetchConnections } = useQuery<string[]>({
+  const { data: connections = [], error: connectionsError } = useQuery<string[]>({
     queryKey: ["/api/connections"],
     queryFn: () => apiRequest("GET", "/api/connections"),
+    retry: false,
   });
+
+  // True when running as a static site with no Express backend
+  const noBackend = !!connectionsError;
 
   const sync = async (provider: string) => {
     setSyncingProvider(provider);
@@ -449,8 +453,17 @@ function ImportTab() {
         Connect your accounts to pull in all your events automatically.
       </p>
 
+      {noBackend && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
+          <p className="font-medium">Server not running</p>
+          <p className="text-xs mt-0.5 text-amber-700 dark:text-amber-400">
+            OAuth requires the Express backend. Run <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">npm run dev</code> locally to use Connect &amp; Sync.
+          </p>
+        </div>
+      )}
+
       {providers.map((p) => (
-        <div key={p.id} className="rounded-lg border border-border p-4 flex items-center justify-between gap-4">
+        <div key={p.id} className={`rounded-lg border border-border p-4 flex items-center justify-between gap-4 ${noBackend && p.available ? "opacity-60" : ""}`}>
           <div className="flex items-center gap-3 min-w-0">
             <span className="text-2xl shrink-0">{p.icon}</span>
             <div className="min-w-0">
@@ -474,17 +487,21 @@ function ImportTab() {
           {p.available && (
             <div className="shrink-0">
               {isConnected(p.id) ? (
-                <Button size="sm" onClick={() => sync(p.id)} disabled={syncingProvider === p.id}>
+                <Button size="sm" onClick={() => sync(p.id)} disabled={syncingProvider === p.id || noBackend}>
                   {syncingProvider === p.id
                     ? <Loader2 size={13} className="mr-1.5 animate-spin" />
                     : <RefreshCw size={13} className="mr-1.5" />}
                   Sync
                 </Button>
               ) : (
-                <Button size="sm" variant="outline" asChild>
-                  <a href={`/api/auth/${p.id}`}>
-                    <Link2 size={13} className="mr-1.5" />Connect
-                  </a>
+                <Button size="sm" variant="outline" disabled={noBackend} asChild={!noBackend}>
+                  {noBackend ? (
+                    <><Link2 size={13} className="mr-1.5" />Connect</>
+                  ) : (
+                    <a href={`/api/auth/${p.id}`}>
+                      <Link2 size={13} className="mr-1.5" />Connect
+                    </a>
+                  )}
                 </Button>
               )}
             </div>
