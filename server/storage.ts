@@ -2,12 +2,13 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, like, asc, desc } from "drizzle-orm";
 import {
-  users, tickets, watchlist, conflicts, inboundEmails,
+  users, tickets, watchlist, conflicts, inboundEmails, oauthTokens,
   type User, type InsertUser,
   type Ticket, type InsertTicket,
   type Watchlist, type InsertWatchlist,
   type Conflict, type InsertConflict,
   type InboundEmail, type InsertInboundEmail,
+  type OAuthToken, type InsertOAuthToken,
 } from "@shared/schema";
 
 const sqlite = new Database("hbs-tix.db");
@@ -69,6 +70,16 @@ sqlite.exec(`
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL DEFAULT ''
   );
+
+  CREATE TABLE IF NOT EXISTS oauth_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
 `);
 
 export interface IStorage {
@@ -100,6 +111,11 @@ export interface IStorage {
   createInboundEmail(email: InsertInboundEmail): InboundEmail;
   getPendingEmails(): InboundEmail[];
   updateEmailStatus(id: number, status: string): void;
+
+  // OAuth Tokens
+  saveOAuthToken(token: InsertOAuthToken): OAuthToken;
+  getOAuthToken(userId: number, provider: string): OAuthToken | undefined;
+  getConnectedProviders(userId: number): string[];
 }
 
 function now() {
@@ -176,5 +192,23 @@ export const storage: IStorage = {
   },
   updateEmailStatus(id, status) {
     db.update(inboundEmails).set({ status }).where(eq(inboundEmails.id, id)).run();
+  },
+
+  // OAuth tokens
+  saveOAuthToken(token) {
+    sqlite.prepare("DELETE FROM oauth_tokens WHERE user_id = ? AND provider = ?").run(token.userId, token.provider);
+    return db.insert(oauthTokens).values({ ...token, createdAt: now() }).returning().get();
+  },
+  getOAuthToken(userId, provider) {
+    return db.select().from(oauthTokens)
+      .where(eq(oauthTokens.userId, userId))
+      .all()
+      .find(t => t.provider === provider);
+  },
+  getConnectedProviders(userId) {
+    return db.select().from(oauthTokens)
+      .where(eq(oauthTokens.userId, userId))
+      .all()
+      .map(t => t.provider);
   },
 };

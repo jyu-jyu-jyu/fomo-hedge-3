@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   PenLine, Mail, Camera, Upload, Loader2, CheckCircle,
-  ArrowLeft, Info, Copy
+  ArrowLeft, Info, Copy, Link2, RefreshCw, Plug
 } from "lucide-react";
 
 const FORWARD_EMAIL = "alex-chen@fomohedge.com";
@@ -362,9 +363,156 @@ function ScreenshotTab() {
   );
 }
 
+// ── Connected Accounts (Import) Tab ──────────────────────────────────────────
+function ImportTab() {
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const [syncingProvider, setSyncingProvider] = useState<string | null>(null);
+  const [justConnected, setJustConnected] = useState<string | null>(null);
+
+  // Parse ?connected= or ?error= from hash query string (e.g. /#/add?connected=eventbrite)
+  useEffect(() => {
+    const hash = window.location.hash;
+    const qIdx = hash.indexOf("?");
+    if (qIdx < 0) return;
+    const params = new URLSearchParams(hash.slice(qIdx + 1));
+    const connected = params.get("connected");
+    const error = params.get("error");
+    if (connected) {
+      setJustConnected(connected);
+      toast({ title: `${connected.charAt(0).toUpperCase() + connected.slice(1)} connected!`, description: "Click Sync to import your events." });
+      window.history.replaceState(null, "", "/#/add");
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        eventbrite_not_configured: "Eventbrite OAuth credentials not set in .env",
+        outlook_not_configured: "Outlook OAuth credentials not set in .env",
+        token_exchange_failed: "Token exchange failed — check your client secret",
+        auth_failed: "Authentication was cancelled or failed",
+      };
+      toast({ title: "Connection failed", description: messages[error] || error, variant: "destructive" });
+      window.history.replaceState(null, "", "/#/add");
+    }
+  }, []);
+
+  const { data: connections = [], refetch: refetchConnections } = useQuery<string[]>({
+    queryKey: ["/api/connections"],
+    queryFn: () => apiRequest("GET", "/api/connections"),
+  });
+
+  const sync = async (provider: string) => {
+    setSyncingProvider(provider);
+    try {
+      const result: any = await apiRequest("POST", `/api/sync/${provider}`, {});
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      toast({
+        title: result.imported === 0 ? "Already up to date" : `${result.imported} event${result.imported !== 1 ? "s" : ""} imported`,
+        description: result.imported > 0 ? "Check My Tickets to see them." : "No new events found.",
+      });
+    } catch (e: any) {
+      toast({ title: "Sync failed", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncingProvider(null);
+    }
+  };
+
+  const isConnected = (provider: string) =>
+    connections.includes(provider) || justConnected === provider;
+
+  const providers = [
+    {
+      id: "eventbrite",
+      name: "Eventbrite",
+      icon: "🎟️",
+      description: "Import all your purchased event tickets",
+      available: true,
+    },
+    {
+      id: "outlook",
+      name: "Outlook Calendar",
+      icon: "📅",
+      description: "Import upcoming events from your HBS calendar",
+      available: true,
+    },
+    {
+      id: "partiful",
+      name: "Partiful",
+      icon: "🎉",
+      description: "No public API — forward invite emails instead",
+      available: false,
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Connect your accounts to pull in all your events automatically.
+      </p>
+
+      {providers.map((p) => (
+        <div key={p.id} className="rounded-lg border border-border p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-2xl shrink-0">{p.icon}</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-medium text-sm">{p.name}</p>
+                {isConnected(p.id) && (
+                  <Badge variant="outline" className="text-xs text-green-700 border-green-300 bg-green-50 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">
+                    Connected
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>
+              {!p.available && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Use the Email tab to forward Partiful invite emails.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {p.available && (
+            <div className="shrink-0">
+              {isConnected(p.id) ? (
+                <Button size="sm" onClick={() => sync(p.id)} disabled={syncingProvider === p.id}>
+                  {syncingProvider === p.id
+                    ? <Loader2 size={13} className="mr-1.5 animate-spin" />
+                    : <RefreshCw size={13} className="mr-1.5" />}
+                  Sync
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" asChild>
+                  <a href={`/api/auth/${p.id}`}>
+                    <Link2 size={13} className="mr-1.5" />Connect
+                  </a>
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+
+      <p className="text-xs text-muted-foreground pt-1">
+        Add <code className="bg-muted px-1 rounded">EVENTBRITE_CLIENT_ID</code> / <code className="bg-muted px-1 rounded">OUTLOOK_CLIENT_ID</code> to your <code className="bg-muted px-1 rounded">.env</code> to enable OAuth.
+      </p>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function AddTicket() {
   const [, navigate] = useLocation();
+
+  // If returning from OAuth, open the Import tab automatically
+  const defaultTab = (() => {
+    const hash = window.location.hash;
+    const qIdx = hash.indexOf("?");
+    if (qIdx >= 0) {
+      const params = new URLSearchParams(hash.slice(qIdx + 1));
+      if (params.has("connected") || params.has("error")) return "import";
+    }
+    return "manual";
+  })();
 
   return (
     <div className="max-w-lg mx-auto space-y-5">
@@ -377,12 +525,12 @@ export default function AddTicket() {
       <div>
         <h1 className="text-xl font-bold">Add a ticket</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Three ways to import — pick whatever's easiest
+          Four ways to import — pick whatever's easiest
         </p>
       </div>
 
-      <Tabs defaultValue="manual">
-        <TabsList className="w-full grid grid-cols-3">
+      <Tabs defaultValue={defaultTab}>
+        <TabsList className="w-full grid grid-cols-4">
           <TabsTrigger value="manual" data-testid="tab-manual">
             <PenLine size={13} className="mr-1.5" />Manual
           </TabsTrigger>
@@ -390,7 +538,10 @@ export default function AddTicket() {
             <Mail size={13} className="mr-1.5" />Email
           </TabsTrigger>
           <TabsTrigger value="screenshot" data-testid="tab-screenshot">
-            <Camera size={13} className="mr-1.5" />Screenshot
+            <Camera size={13} className="mr-1.5" />Photo
+          </TabsTrigger>
+          <TabsTrigger value="import" data-testid="tab-import">
+            <Plug size={13} className="mr-1.5" />Import
           </TabsTrigger>
         </TabsList>
 
@@ -408,7 +559,7 @@ export default function AddTicket() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Forward a confirmation email</CardTitle>
-              <CardDescription>Works for any platform — Eventbrite, Partiful, travel agents, anything</CardDescription>
+              <CardDescription>Works for Eventbrite, Partiful, travel agents, anything</CardDescription>
             </CardHeader>
             <CardContent><EmailForwardTab /></CardContent>
           </Card>
@@ -421,6 +572,16 @@ export default function AddTicket() {
               <CardDescription>Great for WhatsApp confirmations, Partiful invites, or anything without an email</CardDescription>
             </CardHeader>
             <CardContent><ScreenshotTab /></CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="import" className="mt-5">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Connected accounts</CardTitle>
+              <CardDescription>Log in once, sync all your events automatically</CardDescription>
+            </CardHeader>
+            <CardContent><ImportTab /></CardContent>
           </Card>
         </TabsContent>
       </Tabs>

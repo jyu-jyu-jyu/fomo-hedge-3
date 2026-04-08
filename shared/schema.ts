@@ -84,3 +84,18 @@ export const inboundEmails = sqliteTable("inbound_emails", {
 export const insertInboundEmailSchema = createInsertSchema(inboundEmails).omit({ id: true, createdAt: true });
 export type InsertInboundEmail = z.infer<typeof insertInboundEmailSchema>;
 export type InboundEmail = typeof inboundEmails.$inferSelect;
+
+// OAuth tokens — stored per user per provider
+export const oauthTokens = sqliteTable("oauth_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  provider: text("provider").notNull(), // "eventbrite" | "outlook"
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  expiresAt: text("expires_at"),
+  createdAt: text("created_at").notNull().default(""),
+});
+
+export const insertOAuthTokenSchema = createInsertSchema(oauthTokens).omit({ id: true, createdAt: true });
+export type InsertOAuthToken = z.infer<typeof insertOAuthTokenSchema>;
+export type OAuthToken = typeof oauthTokens.$inferSelect;

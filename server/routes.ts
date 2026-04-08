@@ -5,6 +5,25 @@ import { storage } from "./storage";
 import { insertTicketSchema, insertWatchlistSchema, insertConflictSchema, insertInboundEmailSchema } from "@shared/schema";
 import { z } from "zod";
 
+// ── OAuth provider configuration ───────────────────────────────────────────
+const REDIRECT_BASE = process.env.REDIRECT_BASE_URL || "http://localhost:5000";
+
+const OAUTH_CONFIG = {
+  eventbrite: {
+    authUrl: "https://www.eventbrite.com/oauth/authorize",
+    tokenUrl: "https://www.eventbrite.com/oauth/token",
+    clientId: process.env.EVENTBRITE_CLIENT_ID || "",
+    clientSecret: process.env.EVENTBRITE_CLIENT_SECRET || "",
+  },
+  outlook: {
+    authUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    clientId: process.env.OUTLOOK_CLIENT_ID || "",
+    clientSecret: process.env.OUTLOOK_CLIENT_SECRET || "",
+    scope: "Calendars.Read User.Read offline_access",
+  },
+};
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // Seed a demo user so the app works out-of-the-box
@@ -88,6 +107,195 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/me", (req, res) => {
     const user = storage.getUserByEmail("demo@hbs.edu");
     res.json(user);
+  });
+
+  // ── Connected accounts ─────────────────────────────────────────────────────
+  app.get("/api/connections", (req, res) => {
+    const user = storage.getUserByEmail("demo@hbs.edu")!;
+    res.json(storage.getConnectedProviders(user.id));
+  });
+
+  // ── OAuth initiation ───────────────────────────────────────────────────────
+  app.get("/api/auth/:provider", (req, res) => {
+    const { provider } = req.params;
+
+    if (provider === "eventbrite") {
+      const cfg = OAUTH_CONFIG.eventbrite;
+      if (!cfg.clientId) return res.redirect("/#/add?error=eventbrite_not_configured");
+      const url = new URL(cfg.authUrl);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("client_id", cfg.clientId);
+      url.searchParams.set("redirect_uri", `${REDIRECT_BASE}/api/auth/eventbrite/callback`);
+      return res.redirect(url.toString());
+    }
+
+    if (provider === "outlook") {
+      const cfg = OAUTH_CONFIG.outlook;
+      if (!cfg.clientId) return res.redirect("/#/add?error=outlook_not_configured");
+      const url = new URL(cfg.authUrl);
+      url.searchParams.set("client_id", cfg.clientId);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("redirect_uri", `${REDIRECT_BASE}/api/auth/outlook/callback`);
+      url.searchParams.set("scope", cfg.scope);
+      url.searchParams.set("response_mode", "query");
+      return res.redirect(url.toString());
+    }
+
+    res.status(400).json({ error: "Unknown provider" });
+  });
+
+  // ── OAuth callback ─────────────────────────────────────────────────────────
+  app.get("/api/auth/:provider/callback", async (req, res) => {
+    const { provider } = req.params;
+    const { code, error } = req.query as Record<string, string>;
+
+    if (error || !code) {
+      return res.redirect(`/#/add?error=${error || "auth_failed"}`);
+    }
+
+    try {
+      let tokenData: any;
+
+      if (provider === "eventbrite") {
+        const cfg = OAUTH_CONFIG.eventbrite;
+        const params = new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: cfg.clientId,
+          client_secret: cfg.clientSecret,
+          code,
+          redirect_uri: `${REDIRECT_BASE}/api/auth/eventbrite/callback`,
+        });
+        const r = await fetch(cfg.tokenUrl, { method: "POST", body: params });
+        tokenData = await r.json();
+      } else if (provider === "outlook") {
+        const cfg = OAUTH_CONFIG.outlook;
+        const params = new URLSearchParams({
+          client_id: cfg.clientId,
+          client_secret: cfg.clientSecret,
+          code,
+          redirect_uri: `${REDIRECT_BASE}/api/auth/outlook/callback`,
+          grant_type: "authorization_code",
+          scope: cfg.scope,
+        });
+        const r = await fetch(cfg.tokenUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: params,
+        });
+        tokenData = await r.json();
+      } else {
+        return res.redirect("/#/add?error=unknown_provider");
+      }
+
+      if (!tokenData?.access_token) {
+        return res.redirect("/#/add?error=token_exchange_failed");
+      }
+
+      const user = storage.getUserByEmail("demo@hbs.edu")!;
+      storage.saveOAuthToken({
+        userId: user.id,
+        provider,
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token ?? null,
+        expiresAt: tokenData.expires_in
+          ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+          : null,
+      });
+
+      res.redirect(`/#/add?connected=${provider}`);
+    } catch (e: any) {
+      res.redirect("/#/add?error=token_exchange_failed");
+    }
+  });
+
+  // ── Sync events from a connected provider ─────────────────────────────────
+  app.post("/api/sync/:provider", async (req, res) => {
+    const { provider } = req.params;
+    const user = storage.getUserByEmail("demo@hbs.edu")!;
+    const token = storage.getOAuthToken(user.id, provider);
+
+    if (!token) {
+      return res.status(401).json({ error: "Not connected. Please authenticate first." });
+    }
+
+    try {
+      let imported = 0;
+      const existingTickets = storage.getTicketsByUser(user.id);
+
+      if (provider === "eventbrite") {
+        const r = await fetch(
+          "https://www.eventbriteapi.com/v3/users/me/orders/?expand=event&status=active&page_size=50",
+          { headers: { Authorization: `Bearer ${token.accessToken}` } }
+        );
+        const data = await r.json();
+        for (const order of (data.orders ?? [])) {
+          const event = order.event;
+          if (!event) continue;
+          const eventDate = event.start?.local?.split("T")[0] ?? new Date().toISOString().split("T")[0];
+          const pricePaid = order.costs?.gross?.value ? order.costs.gross.value / 100 : 0;
+          const alreadyExists = existingTickets.some(
+            t => t.eventName === event.name?.text && t.eventDate === eventDate
+          );
+          if (!alreadyExists) {
+            const ai = computeAiLikelihood({ eventType: "other", eventDate, pricePaid });
+            storage.createTicket({
+              userId: user.id,
+              eventName: event.name?.text || "Eventbrite Event",
+              eventDate,
+              eventType: "other",
+              platform: "eventbrite",
+              pricePaid,
+              currency: "USD",
+              userLikelihood: 50,
+              aiLikelihood: ai.score,
+              aiReason: ai.reason,
+              isListed: 0,
+              askingPrice: null,
+              notes: "Imported from Eventbrite",
+            });
+            imported++;
+          }
+        }
+      }
+
+      if (provider === "outlook") {
+        const now = new Date().toISOString();
+        const r = await fetch(
+          `https://graph.microsoft.com/v1.0/me/events?$filter=start/dateTime ge '${now}'&$orderby=start/dateTime&$top=50&$select=subject,start,end`,
+          { headers: { Authorization: `Bearer ${token.accessToken}` } }
+        );
+        const data = await r.json();
+        for (const event of (data.value ?? [])) {
+          const eventDate = event.start?.dateTime?.split("T")[0] ?? new Date().toISOString().split("T")[0];
+          const alreadyExists = existingTickets.some(
+            t => t.eventName === event.subject && t.eventDate === eventDate
+          );
+          if (!alreadyExists) {
+            const ai = computeAiLikelihood({ eventType: "other", eventDate, pricePaid: 0 });
+            storage.createTicket({
+              userId: user.id,
+              eventName: event.subject || "Outlook Event",
+              eventDate,
+              eventType: "other",
+              platform: "outlook",
+              pricePaid: 0,
+              currency: "USD",
+              userLikelihood: 50,
+              aiLikelihood: ai.score,
+              aiReason: ai.reason,
+              isListed: 0,
+              askingPrice: null,
+              notes: "Imported from Outlook Calendar",
+            });
+            imported++;
+          }
+        }
+      }
+
+      res.json({ ok: true, imported });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // ── Tickets ────────────────────────────────────────────────────────────────
