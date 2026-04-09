@@ -32,35 +32,36 @@ function seedDemoUser() {
   if (!existing) {
     const user = storage.createUser({ name: "Alex Chen", email: "demo@hbs.edu", forwardEmail: "alex-chen@fomohedge.com" });
 
-    // Seed some demo tickets
+    // Seed some demo tickets — tagged with DEMO so they can be wiped on first real sync
+    const DEMO_TAG = "__DEMO__";
     const demoTickets = [
       {
         userId: user.id, eventName: "HBS Winter Formal 2026", eventDate: "2026-04-15",
         eventType: "party", platform: "partiful", pricePaid: 45, currency: "USD",
         userLikelihood: 70, aiLikelihood: 42,
         aiReason: "You have a flight back from Peru landing Apr 13 — 2 days buffer before a late-night formal is historically low for you.",
-        isListed: 1, askingPrice: 40, notes: "",
+        isListed: 1, askingPrice: 40, notes: DEMO_TAG,
       },
       {
         userId: user.id, eventName: "HBS Peru Trek 2026", eventDate: "2026-04-03",
         eventType: "trek", platform: "manual", pricePaid: 2800, currency: "USD",
         userLikelihood: 90, aiLikelihood: 88,
         aiReason: "No major conflicts detected. Trek is 2+ weeks away and you have no overlapping commitments.",
-        isListed: 0, askingPrice: null, notes: "10-day trek, departs April 3",
+        isListed: 0, askingPrice: null, notes: DEMO_TAG,
       },
       {
         userId: user.id, eventName: "FinTech Club Networking Night", eventDate: "2026-04-08",
         eventType: "career", platform: "luma", pricePaid: 0, currency: "USD",
         userLikelihood: 55, aiLikelihood: 61,
         aiReason: "Free event — commitment tends to be lower. You have 2 other events that week.",
-        isListed: 0, askingPrice: null, notes: "",
+        isListed: 0, askingPrice: null, notes: DEMO_TAG,
       },
       {
         userId: user.id, eventName: "HBS Spring Concert", eventDate: "2026-04-22",
         eventType: "party", platform: "eventbrite", pricePaid: 30, currency: "USD",
         userLikelihood: 80, aiLikelihood: 75,
         aiReason: "No conflicts detected. You've attended 3 of 4 past concerts.",
-        isListed: 0, askingPrice: null, notes: "",
+        isListed: 0, askingPrice: null, notes: DEMO_TAG,
       },
     ];
 
@@ -233,20 +234,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
         // Remove demo-seeded tickets on first real sync
         if ((data.orders ?? []).length > 0) {
-          const demoTickets = existingTickets.filter(t =>
-            ["manual", "partiful", "luma", "eventbrite"].includes(t.platform) &&
-            t.notes !== "Imported from Eventbrite" &&
-            t.userId === user.id
+          const demoToDelete = existingTickets.filter(t => t.notes === "__DEMO__");
+          for (const t of demoToDelete) storage.deleteTicket(t.id);
+          existingTickets.splice(0, existingTickets.length,
+            ...existingTickets.filter(t => t.notes !== "__DEMO__")
           );
-          // Only wipe if they look like demo data (userId matches and created within same second)
-          const firstCreated = existingTickets[0]?.createdAt ?? "";
-          const allSameSecond = existingTickets.every(t =>
-            t.createdAt.slice(0, 19) === firstCreated.slice(0, 19)
-          );
-          if (allSameSecond && existingTickets.length <= 4) {
-            for (const t of existingTickets) storage.deleteTicket(t.id);
-            existingTickets.length = 0;
-          }
         }
 
         for (const order of (data.orders ?? [])) {
