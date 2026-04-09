@@ -224,7 +224,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       if (provider === "eventbrite") {
         const r = await fetch(
-          "https://www.eventbriteapi.com/v3/users/me/orders/?expand=event&time_filter=future&page_size=50",
+          "https://www.eventbriteapi.com/v3/users/me/orders/?expand=event&only_public=false",
           { headers: { Authorization: `Bearer ${token.accessToken}` } }
         );
         const data = await r.json();
