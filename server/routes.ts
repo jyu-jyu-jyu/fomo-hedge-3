@@ -228,7 +228,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           { headers: { Authorization: `Bearer ${token.accessToken}` } }
         );
         const data = await r.json();
-        console.log("Eventbrite sync response:", JSON.stringify(data).slice(0, 500));
+        console.log("Eventbrite sync response:", JSON.stringify(data).slice(0, 1000));
+        console.log("Eventbrite orders count:", data.orders?.length ?? 0);
         for (const order of (data.orders ?? [])) {
           const event = order.event;
           if (!event) continue;
