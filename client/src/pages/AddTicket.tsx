@@ -395,11 +395,13 @@ function ImportTab() {
     }
   }, []);
 
-  const { data: connections = [], error: connectionsError } = useQuery<string[]>({
+  const { data: rawConnections, error: connectionsError } = useQuery({
     queryKey: ["/api/connections"],
     queryFn: () => apiRequest("GET", "/api/connections"),
     retry: false,
   });
+
+  const connections: string[] = Array.isArray(rawConnections) ? rawConnections : [];
 
   // True when running as a static site with no Express backend
   const noBackend = !!connectionsError;
