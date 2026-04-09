@@ -224,14 +224,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       if (provider === "eventbrite") {
         const r = await fetch(
-          "https://www.eventbriteapi.com/v3/users/me/orders/?expand=event&status=active&page_size=50",
+          "https://www.eventbriteapi.com/v3/users/me/orders/?expand=event&time_filter=future&page_size=50",
           { headers: { Authorization: `Bearer ${token.accessToken}` } }
         );
         const data = await r.json();
+        console.log("Eventbrite sync response:", JSON.stringify(data).slice(0, 500));
         for (const order of (data.orders ?? [])) {
           const event = order.event;
           if (!event) continue;
-          const eventDate = event.start?.local?.split("T")[0] ?? new Date().toISOString().split("T")[0];
+          const eventDate = (event.start?.local ?? event.start?.utc ?? "").split("T")[0] || new Date().toISOString().split("T")[0];
           const pricePaid = order.costs?.gross?.value ? order.costs.gross.value / 100 : 0;
           const alreadyExists = existingTickets.some(
             t => t.eventName === event.name?.text && t.eventDate === eventDate

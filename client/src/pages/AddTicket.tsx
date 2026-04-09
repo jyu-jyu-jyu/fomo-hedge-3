@@ -411,9 +411,10 @@ function ImportTab() {
     try {
       const result: any = await apiRequest("POST", `/api/sync/${provider}`, {});
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      const n = typeof result.imported === "number" ? result.imported : 0;
       toast({
-        title: result.imported === 0 ? "Already up to date" : `${result.imported} event${result.imported !== 1 ? "s" : ""} imported`,
-        description: result.imported > 0 ? "Check My Tickets to see them." : "No new events found.",
+        title: n === 0 ? "Already up to date" : `${n} event${n !== 1 ? "s" : ""} imported`,
+        description: n > 0 ? "Check My Tickets to see them." : "No new events found.",
       });
     } catch (e: any) {
       toast({ title: "Sync failed", description: e.message, variant: "destructive" });
