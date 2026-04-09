@@ -2,14 +2,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { Link } from "wouter";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, Ticket, ChevronDown, ChevronUp,
-  Tag, Brain, Calendar, DollarSign, X, Plus, ArrowRight
+  Tag, Brain, Calendar, DollarSign, X, Plus, CheckCircle2
 } from "lucide-react";
 
 type TicketWithConflicts = {
@@ -42,7 +42,7 @@ function likelihoodLabel(score: number) {
 function platformBadge(platform: string) {
   const map: Record<string, string> = {
     eventbrite: "Eventbrite", partiful: "Partiful", luma: "Luma",
-    email: "Email import", screenshot: "Screenshot", manual: "Manual",
+    email: "Email import", screenshot: "Screenshot", manual: "Manual", outlook: "Outlook",
   };
   return map[platform] || platform;
 }
@@ -58,7 +58,7 @@ function eventTypeBadge(type: string) {
   return colors[type] || colors.other;
 }
 
-function TicketCard({ ticket }: { ticket: TicketWithConflicts }) {
+function TicketCard({ ticket, isPast }: { ticket: TicketWithConflicts; isPast: boolean }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [likelihood, setLikelihood] = useState(ticket.userLikelihood);
@@ -74,10 +74,6 @@ function TicketCard({ ticket }: { ticket: TicketWithConflicts }) {
     mutationFn: (conflictId: number) => apiRequest("POST", `/api/conflicts/${conflictId}/dismiss`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tickets"] }),
   });
-
-  const handleLikelihoodCommit = (val: number) => {
-    updateMutation.mutate({ userLikelihood: val });
-  };
 
   const toggleList = () => {
     const newListed = ticket.isListed === 1 ? 0 : 1;
@@ -96,9 +92,9 @@ function TicketCard({ ticket }: { ticket: TicketWithConflicts }) {
   const daysUntil = Math.ceil((new Date(ticket.eventDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
   return (
-    <Card className="ticket-card border-border bg-card overflow-hidden" data-testid={`ticket-card-${ticket.id}`}>
-      {/* Conflict banner */}
-      {activeConflicts.map(c => (
+    <Card className={`ticket-card border-border bg-card overflow-hidden ${isPast ? "opacity-80" : ""}`} data-testid={`ticket-card-${ticket.id}`}>
+      {/* Conflict banner — only for upcoming */}
+      {!isPast && activeConflicts.map(c => (
         <div key={c.id} className="flex items-start gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
           <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <p className="text-sm text-amber-800 dark:text-amber-300 flex-1">{c.conflictDescription}</p>
@@ -122,7 +118,7 @@ function TicketCard({ ticket }: { ticket: TicketWithConflicts }) {
               </span>
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Calendar size={11} />{displayDate}
-                {daysUntil > 0 && <span className="text-muted-foreground/70">· {daysUntil}d away</span>}
+                {!isPast && daysUntil > 0 && <span className="text-muted-foreground/70">· {daysUntil}d away</span>}
               </span>
               <span className="text-xs text-muted-foreground">{platformBadge(ticket.platform)}</span>
             </div>
@@ -135,74 +131,98 @@ function TicketCard({ ticket }: { ticket: TicketWithConflicts }) {
       </CardHeader>
 
       <CardContent className="pt-0 space-y-4">
-        {/* Likelihood section */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Your likelihood of going</span>
-            <div className="flex items-center gap-2">
-              {/* AI suggestion */}
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${likelihoodClass(aiScore)}`}>
-                <Brain size={10} /> AI: {aiScore}%
-              </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${likelihoodClass(likelihood)}`}>
-                You: {likelihood}%
-              </span>
+        {isPast ? (
+          /* Past event — just show attended badge */
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CheckCircle2 size={13} className="text-green-500" />
+            Event has passed
+          </div>
+        ) : (
+          <>
+            {/* Likelihood section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Your likelihood of going</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${likelihoodClass(aiScore)}`}>
+                    <Brain size={10} /> AI: {aiScore}%
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${likelihoodClass(likelihood)}`}>
+                    You: {likelihood}%
+                  </span>
+                </div>
+              </div>
+              <Slider
+                data-testid="likelihood-slider"
+                min={0} max={100} step={5}
+                value={[likelihood]}
+                onValueChange={([v]) => setLikelihood(v)}
+                onValueCommit={([v]) => updateMutation.mutate({ userLikelihood: v })}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Definitely bailing</span>
+                <span className={`font-medium ${likelihoodClass(likelihood)}`}>{likelihoodLabel(likelihood)}</span>
+                <span>Definitely going</span>
+              </div>
             </div>
-          </div>
-          <Slider
-            data-testid="likelihood-slider"
-            min={0} max={100} step={5}
-            value={[likelihood]}
-            onValueChange={([v]) => setLikelihood(v)}
-            onValueCommit={([v]) => handleLikelihoodCommit(v)}
-            className="w-full"
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Definitely bailing</span>
-            <span className={`font-medium ${likelihoodClass(likelihood)}`}>{likelihoodLabel(likelihood)}</span>
-            <span>Definitely going</span>
-          </div>
-        </div>
 
-        {/* AI reason expandable */}
-        {ticket.aiReason && (
-          <button
-            onClick={() => setExpanded(e => !e)}
-            className="w-full text-left text-xs text-muted-foreground flex items-center gap-1.5 hover:text-foreground transition-colors"
-            data-testid="ai-reason-toggle"
-          >
-            <Brain size={11} />
-            {expanded ? "Hide AI reasoning" : "Why did AI suggest this score?"}
-            {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-          </button>
-        )}
-        {expanded && ticket.aiReason && (
-          <div className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2 border border-border">
-            {ticket.aiReason}
-          </div>
-        )}
+            {/* AI reason expandable */}
+            {ticket.aiReason && (
+              <button
+                onClick={() => setExpanded(e => !e)}
+                className="w-full text-left text-xs text-muted-foreground flex items-center gap-1.5 hover:text-foreground transition-colors"
+                data-testid="ai-reason-toggle"
+              >
+                <Brain size={11} />
+                {expanded ? "Hide AI reasoning" : "Why did AI suggest this score?"}
+                {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              </button>
+            )}
+            {expanded && ticket.aiReason && (
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2 border border-border">
+                {ticket.aiReason}
+              </div>
+            )}
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 pt-1">
-          <Button
-            variant={ticket.isListed ? "outline" : "default"}
-            size="sm"
-            onClick={toggleList}
-            disabled={updateMutation.isPending}
-            data-testid="list-toggle"
-            className="text-xs"
-          >
-            <Tag size={13} className="mr-1" />
-            {ticket.isListed ? `Listed · $${ticket.askingPrice}` : "List for Sale"}
-          </Button>
-          {ticket.isListed === 1 && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <DollarSign size={11} />Showing in marketplace
-            </span>
-          )}
-        </div>
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                variant={ticket.isListed ? "outline" : "default"}
+                size="sm"
+                onClick={toggleList}
+                disabled={updateMutation.isPending}
+                data-testid="list-toggle"
+                className="text-xs"
+              >
+                <Tag size={13} className="mr-1" />
+                {ticket.isListed ? `Listed · $${ticket.askingPrice}` : "List for Sale"}
+              </Button>
+              {ticket.isListed === 1 && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <DollarSign size={11} />Showing in marketplace
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="text-center py-16 border border-dashed border-border rounded-xl">
+      <Ticket size={36} className="mx-auto text-muted-foreground/50 mb-3" />
+      <p className="font-medium">No tickets yet</p>
+      <p className="text-sm text-muted-foreground mt-1">Add your first event to get started</p>
+      <Link href="/add">
+        <Button className="mt-4" size="sm">
+          <Plus size={14} className="mr-1.5" />Add your first ticket
+        </Button>
+      </Link>
+    </div>
   );
 }
 
@@ -211,8 +231,12 @@ export default function MyTickets() {
     queryKey: ["/api/tickets"],
   });
 
-  const activeConflictCount = tickets?.reduce((sum, t) => sum + t.conflicts.filter(c => !c.dismissed).length, 0) ?? 0;
-  const listedCount = tickets?.filter(t => t.isListed).length ?? 0;
+  const today = new Date().toISOString().split("T")[0];
+  const upcoming = tickets?.filter(t => t.eventDate >= today) ?? [];
+  const past = tickets?.filter(t => t.eventDate < today) ?? [];
+
+  const activeConflictCount = upcoming.reduce((sum, t) => sum + t.conflicts.filter(c => !c.dismissed).length, 0);
+  const listedCount = upcoming.filter(t => t.isListed).length;
 
   return (
     <div className="space-y-6">
@@ -231,12 +255,12 @@ export default function MyTickets() {
         </Link>
       </div>
 
-      {/* Stats row */}
-      {tickets && tickets.length > 0 && (
+      {/* Stats row — upcoming only */}
+      {upcoming.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-card border border-border rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold">{tickets.length}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Total events</div>
+            <div className="text-2xl font-bold">{upcoming.length}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Upcoming</div>
           </div>
           <div className="bg-card border border-border rounded-lg p-3 text-center">
             <div className={`text-2xl font-bold ${activeConflictCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
@@ -268,28 +292,42 @@ export default function MyTickets() {
         </div>
       )}
 
-      {/* Ticket list */}
+      {/* Tabs */}
       {isLoading ? (
         <div className="space-y-3">
-          {[1,2,3].map(i => (
-            <div key={i} className="h-44 rounded-lg bg-muted animate-pulse" />
-          ))}
-        </div>
-      ) : tickets && tickets.length > 0 ? (
-        <div className="space-y-3">
-          {tickets.map(t => <TicketCard key={t.id} ticket={t} />)}
+          {[1,2,3].map(i => <div key={i} className="h-44 rounded-lg bg-muted animate-pulse" />)}
         </div>
       ) : (
-        <div className="text-center py-16 border border-dashed border-border rounded-xl">
-          <Ticket size={36} className="mx-auto text-muted-foreground/50 mb-3" />
-          <p className="font-medium">No tickets yet</p>
-          <p className="text-sm text-muted-foreground mt-1">Add your first event to get started</p>
-          <Link href="/add">
-            <Button className="mt-4" size="sm">
-              <Plus size={14} className="mr-1.5" />Add your first ticket
-            </Button>
-          </Link>
-        </div>
+        <Tabs defaultValue="upcoming">
+          <TabsList className="w-full grid grid-cols-2">
+            <TabsTrigger value="upcoming">
+              Upcoming {upcoming.length > 0 && <span className="ml-1.5 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{upcoming.length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="past">
+              Past {past.length > 0 && <span className="ml-1.5 text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">{past.length}</span>}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="upcoming" className="mt-4">
+            {upcoming.length > 0 ? (
+              <div className="space-y-3">
+                {upcoming.map(t => <TicketCard key={t.id} ticket={t} isPast={false} />)}
+              </div>
+            ) : <EmptyState />}
+          </TabsContent>
+
+          <TabsContent value="past" className="mt-4">
+            {past.length > 0 ? (
+              <div className="space-y-3">
+                {past.map(t => <TicketCard key={t.id} ticket={t} isPast={true} />)}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-sm text-muted-foreground">
+                No past events yet.
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

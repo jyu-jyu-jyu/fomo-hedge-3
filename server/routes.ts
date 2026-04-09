@@ -230,6 +230,25 @@ export function registerRoutes(httpServer: Server, app: Express) {
         const data = await r.json();
         console.log("Eventbrite sync response:", JSON.stringify(data).slice(0, 1000));
         console.log("Eventbrite orders count:", data.orders?.length ?? 0);
+
+        // Remove demo-seeded tickets on first real sync
+        if ((data.orders ?? []).length > 0) {
+          const demoTickets = existingTickets.filter(t =>
+            ["manual", "partiful", "luma", "eventbrite"].includes(t.platform) &&
+            t.notes !== "Imported from Eventbrite" &&
+            t.userId === user.id
+          );
+          // Only wipe if they look like demo data (userId matches and created within same second)
+          const firstCreated = existingTickets[0]?.createdAt ?? "";
+          const allSameSecond = existingTickets.every(t =>
+            t.createdAt.slice(0, 19) === firstCreated.slice(0, 19)
+          );
+          if (allSameSecond && existingTickets.length <= 4) {
+            for (const t of existingTickets) storage.deleteTicket(t.id);
+            existingTickets.length = 0;
+          }
+        }
+
         for (const order of (data.orders ?? [])) {
           const event = order.event;
           if (!event) continue;
