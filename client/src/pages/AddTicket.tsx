@@ -512,9 +512,11 @@ function ImportTab() {
         </div>
       ))}
 
-      <p className="text-xs text-muted-foreground pt-1">
-        Add <code className="bg-muted px-1 rounded">EVENTBRITE_CLIENT_ID</code> / <code className="bg-muted px-1 rounded">OUTLOOK_CLIENT_ID</code> to your <code className="bg-muted px-1 rounded">.env</code> to enable OAuth.
-      </p>
+      {noBackend && (
+        <p className="text-xs text-muted-foreground pt-1">
+          Add <code className="bg-muted px-1 rounded">EVENTBRITE_CLIENT_ID</code> / <code className="bg-muted px-1 rounded">OUTLOOK_CLIENT_ID</code> to your <code className="bg-muted px-1 rounded">.env</code> to enable OAuth.
+        </p>
+      )}
     </div>
   );
 }
