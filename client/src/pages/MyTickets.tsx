@@ -80,16 +80,16 @@ function HbsEmailDialog({
   const submit = (ev: React.FormEvent) => {
     ev.preventDefault();
     setError("");
-    const match = hbsEmail.match(/^[^@]+@hbs(\d{4})\.hbs\.edu$/i);
+    const match = hbsEmail.match(/^[^@]+@mba(\d{4})\.hbs\.edu$/i);
     if (!match) {
-      setError("Must be a valid HBS email (e.g. jsmith@hbs2027.hbs.edu)");
+      setError("Must be a valid HBS email (e.g. jsmith@mba2027.hbs.edu)");
       return;
     }
     saveMutation.mutate(hbsEmail);
   };
 
-  // Extract class year preview from domain e.g. hbs2027.hbs.edu → 2027
-  const yearMatch = hbsEmail.match(/^[^@]+@hbs(\d{4})\.hbs\.edu$/i);
+  // Extract class year preview from domain e.g. mba2027.hbs.edu → 2027
+  const yearMatch = hbsEmail.match(/^[^@]+@mba(\d{4})\.hbs\.edu$/i);
   const yearPreview = yearMatch ? `Class of ${yearMatch[1]}` : null;
 
   return (
@@ -109,7 +109,7 @@ function HbsEmailDialog({
               type="email"
               value={hbsEmail}
               onChange={e => { setHbsEmail(e.target.value); setError(""); }}
-              placeholder="jsmith@hbs2027.hbs.edu"
+              placeholder="jsmith@mba2027.hbs.edu"
               required
             />
             {yearPreview && (
@@ -167,12 +167,13 @@ function eventTypeBadge(type: string) {
   return colors[type] || colors.other;
 }
 
-function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail }: {
+function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail, sellThreshold }: {
   ticket: TicketWithConflicts;
   isPast: boolean;
   transactions: Transaction[];
   currentUser: CurrentUser | undefined;
   onNeedHbsEmail: (cb: () => void) => void;
+  sellThreshold: number;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -221,8 +222,19 @@ function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail 
   const displayDate = new Date(ticket.eventDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const daysUntil = Math.ceil((new Date(ticket.eventDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
+  const belowThreshold = !isPast && ticket.isListed === 0 && aiScore < sellThreshold;
+
   return (
-    <Card className={`ticket-card border-border bg-card overflow-hidden ${isPast ? "opacity-80" : ""}`} data-testid={`ticket-card-${ticket.id}`}>
+    <Card className={`ticket-card border-border bg-card overflow-hidden ${isPast ? "opacity-80" : ""} ${belowThreshold ? "ring-2 ring-orange-400 dark:ring-orange-500" : ""}`} data-testid={`ticket-card-${ticket.id}`}>
+      {/* Sell suggestion banner — shown when below threshold */}
+      {belowThreshold && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-200 dark:border-orange-800">
+          <Tag size={13} className="text-orange-600 dark:text-orange-400 shrink-0" />
+          <p className="text-xs text-orange-800 dark:text-orange-300 flex-1">
+            AI score ({aiScore}%) is below your sell threshold — consider listing this ticket.
+          </p>
+        </div>
+      )}
       {/* Conflict banner — only for upcoming */}
       {!isPast && activeConflicts.map(c => (
         <div key={c.id} className="flex items-start gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
@@ -410,6 +422,9 @@ export default function MyTickets() {
     queryKey: ["/api/me"],
   });
 
+  // Sell threshold state
+  const [sellThreshold, setSellThreshold] = useState(40);
+
   // HBS email dialog state
   const [hbsDialogOpen, setHbsDialogOpen] = useState(false);
   const [pendingListCallback, setPendingListCallback] = useState<(() => void) | null>(null);
@@ -432,6 +447,10 @@ export default function MyTickets() {
 
   const activeConflictCount = upcoming.reduce((sum, t) => sum + t.conflicts.filter(c => !c.dismissed).length, 0);
   const listedCount = upcoming.filter(t => t.isListed).length;
+  const belowThresholdCount = upcoming.filter(t => {
+    const score = t.aiLikelihood ?? t.userLikelihood;
+    return t.isListed === 0 && score < sellThreshold;
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -487,6 +506,36 @@ export default function MyTickets() {
         </div>
       )}
 
+      {/* Sell threshold slider */}
+      {upcoming.length > 0 && (
+        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tag size={14} className="text-muted-foreground" />
+              <span className="text-sm font-medium">Sell if likelihood below</span>
+            </div>
+            <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${sellThreshold > 0 ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" : "bg-muted text-muted-foreground"}`}>
+              {sellThreshold}%
+            </span>
+          </div>
+          <Slider
+            min={0} max={100} step={5}
+            value={[sellThreshold]}
+            onValueChange={([v]) => setSellThreshold(v)}
+            className="w-full"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Off</span>
+            <span>
+              {belowThresholdCount > 0
+                ? <span className="text-orange-600 dark:text-orange-400 font-medium">{belowThresholdCount} ticket{belowThresholdCount !== 1 ? "s" : ""} below threshold</span>
+                : "No tickets below threshold"}
+            </span>
+            <span>100%</span>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       {isLoading ? (
         <div className="space-y-3">
@@ -514,6 +563,7 @@ export default function MyTickets() {
                     transactions={(myTransactions ?? []).filter(tx => tx.ticketId === t.id)}
                     currentUser={currentUser}
                     onNeedHbsEmail={requestHbsEmail}
+                    sellThreshold={sellThreshold}
                   />
                 ))}
               </div>
@@ -531,6 +581,7 @@ export default function MyTickets() {
                     transactions={(myTransactions ?? []).filter(tx => tx.ticketId === t.id)}
                     currentUser={currentUser}
                     onNeedHbsEmail={requestHbsEmail}
+                    sellThreshold={sellThreshold}
                   />
                 ))}
               </div>

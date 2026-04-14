@@ -215,7 +215,7 @@ function BuyDialog({
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
-                  placeholder="jsmith@hbs2027.hbs.edu"
+                  placeholder="jsmith@mba2027.hbs.edu"
                 />
               </div>
               {seller && (
@@ -371,7 +371,7 @@ function WatchDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="watch-email">HBS email</Label>
-            <Input id="watch-email" data-testid="input-watch-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="jsmith@hbs2027.hbs.edu" />
+            <Input id="watch-email" data-testid="input-watch-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="jsmith@mba2027.hbs.edu" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="watch-budget">Max budget (optional)</Label>
