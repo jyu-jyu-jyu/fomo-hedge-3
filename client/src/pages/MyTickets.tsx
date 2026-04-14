@@ -512,7 +512,7 @@ export default function MyTickets() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Tag size={14} className="text-muted-foreground" />
-              <span className="text-sm font-medium">Sell if likelihood below</span>
+              <span className="text-sm font-medium">Find me a buyer if I drop below</span>
             </div>
             <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${sellThreshold > 0 ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" : "bg-muted text-muted-foreground"}`}>
               {sellThreshold}%
