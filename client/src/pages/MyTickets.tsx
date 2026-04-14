@@ -345,6 +345,7 @@ function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail,
   const belowThreshold = !isPast && ticket.isListed === 0 && aiScore < sellThreshold;
 
   return (
+    <>
     <Card className={`ticket-card border-border bg-card overflow-hidden ${isPast ? "opacity-80" : ""} ${belowThreshold ? "ring-2 ring-orange-400 dark:ring-orange-500" : ""}`} data-testid={`ticket-card-${ticket.id}`}>
       {/* Sell suggestion banner — shown when below threshold */}
       {belowThreshold && (
@@ -518,6 +519,7 @@ function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail,
       onOpenChange={setPriceDialogOpen}
       onConfirm={doList}
     />
+    </>
   );
 }
 
