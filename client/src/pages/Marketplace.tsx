@@ -79,7 +79,7 @@ function SellerCard({ seller, index }: { seller: TopSeller; index: number }) {
             <span className="text-sm font-medium">{seller.sellerName}</span>
             {seller.classYear && (
               <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                Class of 20{String(seller.classYear).padStart(2, "0")}
+                Class of {seller.classYear}
               </span>
             )}
           </div>
