@@ -136,6 +136,124 @@ function HbsEmailDialog({
   );
 }
 
+// ── Listing Price Dialog ────────────────────────────────────────────────────
+function ListingPriceDialog({
+  ticket,
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  ticket: TicketWithConflicts;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onConfirm: (price: number) => void;
+}) {
+  const suggested = Math.round(ticket.pricePaid * 0.85);
+  const [priceStr, setPriceStr] = useState(String(suggested));
+
+  // Fetch marketplace to compare with other listings for same event
+  const { data: marketEvents } = useQuery<any[]>({
+    queryKey: ["/api/marketplace"],
+    enabled: open,
+  });
+
+  const price = parseFloat(priceStr) || 0;
+  const pricePaid = ticket.pricePaid;
+
+  const discountPct = pricePaid > 0 ? Math.round((1 - price / pricePaid) * 100) : 0;
+  const discountLabel =
+    discountPct > 0 ? `${discountPct}% below what you paid ($${pricePaid})`
+    : discountPct < 0 ? `${Math.abs(discountPct)}% above what you paid ($${pricePaid})`
+    : `Same as what you paid ($${pricePaid})`;
+
+  // Find other listings for this event
+  const otherListings = marketEvents
+    ?.find((e: any) => e.eventName === ticket.eventName)
+    ?.topSellers?.filter((s: any) => s.askingPrice != null) ?? [];
+
+  const otherPrices: number[] = otherListings.map((s: any) => s.askingPrice as number);
+  const avgOther = otherPrices.length > 0
+    ? Math.round(otherPrices.reduce((a: number, b: number) => a + b, 0) / otherPrices.length)
+    : null;
+  const minOther = otherPrices.length > 0 ? Math.min(...otherPrices) : null;
+
+  let comparisonLabel: string | null = null;
+  if (avgOther !== null) {
+    if (price < (minOther ?? avgOther)) comparisonLabel = `Lowest price listed — other sellers ask $${minOther}–$${Math.max(...otherPrices)}`;
+    else if (price > avgOther) comparisonLabel = `Above average — other listings average $${avgOther}`;
+    else comparisonLabel = `Around the average — other listings average $${avgOther}`;
+  }
+
+  const handleConfirm = () => {
+    if (price > 0) { onConfirm(price); onOpenChange(false); }
+  };
+
+  // Reset price when dialog opens
+  const handleOpen = (v: boolean) => {
+    if (v) setPriceStr(String(suggested));
+    onOpenChange(v);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set your listing price</DialogTitle>
+          <DialogDescription>
+            {ticket.eventName} · {new Date(ticket.eventDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="listing-price">Asking price (USD)</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">$</span>
+              <Input
+                id="listing-price"
+                type="number"
+                min={0}
+                step={1}
+                value={priceStr}
+                onChange={e => setPriceStr(e.target.value)}
+                className="pl-7"
+              />
+            </div>
+          </div>
+
+          {/* Discount from original */}
+          {pricePaid > 0 && (
+            <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg border ${
+              discountPct > 0 ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300"
+              : discountPct < 0 ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300"
+              : "bg-muted border-border text-muted-foreground"
+            }`}>
+              <DollarSign size={14} className="shrink-0" />
+              {discountLabel}
+            </div>
+          )}
+
+          {/* Comparison with other listings */}
+          {comparisonLabel && (
+            <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-muted/50 border border-border text-muted-foreground">
+              <Tag size={14} className="shrink-0" />
+              {comparisonLabel}
+            </div>
+          )}
+          {otherListings.length === 0 && (
+            <div className="text-xs text-muted-foreground px-1">No other listings found for this event — you'd be the first seller.</div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleConfirm} disabled={price <= 0}>
+            List at ${price > 0 ? price : "—"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function likelihoodClass(score: number) {
   if (score >= 65) return "likelihood-high";
   if (score >= 40) return "likelihood-medium";
@@ -178,6 +296,7 @@ function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail,
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [likelihood, setLikelihood] = useState(ticket.userLikelihood);
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false);
 
   const activeConflicts = ticket.conflicts.filter(c => !c.dismissed);
 
@@ -197,24 +316,25 @@ function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tickets"] }),
   });
 
-  const doList = () => {
-    const newListed = ticket.isListed === 1 ? 0 : 1;
-    const askingPrice = newListed ? Math.round(ticket.pricePaid * 0.85) : null;
-    updateMutation.mutate({ isListed: newListed, askingPrice });
-    toast({
-      title: newListed ? "Ticket listed for sale" : "Listing removed",
-      description: newListed
-        ? `Listed at $${askingPrice} — visible to buyers in the marketplace.`
-        : "Your ticket is no longer visible to buyers.",
-    });
+  const doUnlist = () => {
+    updateMutation.mutate({ isListed: 0, askingPrice: null });
+    toast({ title: "Listing removed", description: "Your ticket is no longer visible to buyers." });
   };
 
+  const doList = (price: number) => {
+    updateMutation.mutate({ isListed: 1, askingPrice: price });
+    toast({ title: "Ticket listed for sale", description: `Listed at $${price} — visible to buyers in the marketplace.` });
+  };
+
+  const openPriceDialog = () => setPriceDialogOpen(true);
+
   const toggleList = () => {
-    // If trying to list (not already listed) and user doesn't have an HBS email, collect it first
-    if (ticket.isListed === 0 && !currentUser?.hbsEmail) {
-      onNeedHbsEmail(doList);
+    if (ticket.isListed === 1) {
+      doUnlist();
+    } else if (!currentUser?.hbsEmail) {
+      onNeedHbsEmail(openPriceDialog);
     } else {
-      doList();
+      openPriceDialog();
     }
   };
 
@@ -391,6 +511,13 @@ function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail,
         )}
       </CardContent>
     </Card>
+
+    <ListingPriceDialog
+      ticket={ticket}
+      open={priceDialogOpen}
+      onOpenChange={setPriceDialogOpen}
+      onConfirm={doList}
+    />
   );
 }
 
