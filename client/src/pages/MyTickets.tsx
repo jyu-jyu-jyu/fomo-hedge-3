@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, Ticket, ChevronDown, ChevronUp,
-  Tag, Brain, Calendar, DollarSign, X, Plus, CheckCircle2
+  Tag, Brain, Calendar, DollarSign, X, Plus, CheckCircle2, Users, Send
 } from "lucide-react";
 
 type TicketWithConflicts = {
@@ -25,6 +25,15 @@ type TicketWithConflicts = {
   isListed: number;
   askingPrice: number | null;
   conflicts: Array<{ id: number; conflictDescription: string; dismissed: number }>;
+};
+
+type Transaction = {
+  id: number;
+  ticketId: number;
+  buyerName: string;
+  buyerEmail: string;
+  status: string;
+  createdAt: string;
 };
 
 function likelihoodClass(score: number) {
@@ -58,7 +67,7 @@ function eventTypeBadge(type: string) {
   return colors[type] || colors.other;
 }
 
-function TicketCard({ ticket, isPast }: { ticket: TicketWithConflicts; isPast: boolean }) {
+function TicketCard({ ticket, isPast, transactions }: { ticket: TicketWithConflicts; isPast: boolean; transactions: Transaction[] }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [likelihood, setLikelihood] = useState(ticket.userLikelihood);
@@ -68,6 +77,12 @@ function TicketCard({ ticket, isPast }: { ticket: TicketWithConflicts; isPast: b
   const updateMutation = useMutation({
     mutationFn: (data: Partial<any>) => apiRequest("PATCH", `/api/tickets/${ticket.id}`, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tickets"] }),
+  });
+
+  const markTransferredMutation = useMutation({
+    mutationFn: (transactionId: number) =>
+      apiRequest("PATCH", `/api/transactions/${transactionId}/status`, { status: "ticket_transferred" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/transactions/my-listings"] }),
   });
 
   const dismissConflict = useMutation({
@@ -204,6 +219,47 @@ function TicketCard({ ticket, isPast }: { ticket: TicketWithConflicts; isPast: b
                 </span>
               )}
             </div>
+
+            {/* Buyer interest — only shown when listed */}
+            {ticket.isListed === 1 && transactions.length > 0 && (
+              <div className="pt-1 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Users size={11} />
+                  {transactions.length} interested buyer{transactions.length !== 1 ? "s" : ""}
+                </div>
+                {transactions.map(t => (
+                  <div key={t.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/50 border border-border px-3 py-2">
+                    <div>
+                      <div className="text-xs font-medium">{t.buyerName}</div>
+                      <div className="text-xs text-muted-foreground">{t.buyerEmail}</div>
+                      <div className="text-xs text-muted-foreground capitalize">Status: {t.status.replace(/_/g, " ")}</div>
+                    </div>
+                    {t.status === "interested" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs shrink-0"
+                        disabled={markTransferredMutation.isPending}
+                        onClick={() => markTransferredMutation.mutate(t.id)}
+                      >
+                        <Send size={11} className="mr-1" />
+                        Mark transferred
+                      </Button>
+                    )}
+                    {t.status === "ticket_transferred" && (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 shrink-0">
+                        <CheckCircle2 size={11} />Ticket sent
+                      </span>
+                    )}
+                    {t.status === "payment_done" && (
+                      <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1 shrink-0">
+                        <CheckCircle2 size={11} />Paid
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </CardContent>
@@ -229,6 +285,10 @@ function EmptyState() {
 export default function MyTickets() {
   const { data: tickets, isLoading } = useQuery<TicketWithConflicts[]>({
     queryKey: ["/api/tickets"],
+  });
+
+  const { data: myTransactions } = useQuery<Transaction[]>({
+    queryKey: ["/api/transactions/my-listings"],
   });
 
   const today = new Date().toISOString().split("T")[0];
@@ -311,7 +371,14 @@ export default function MyTickets() {
           <TabsContent value="upcoming" className="mt-4">
             {upcoming.length > 0 ? (
               <div className="space-y-3">
-                {upcoming.map(t => <TicketCard key={t.id} ticket={t} isPast={false} />)}
+                {upcoming.map(t => (
+                  <TicketCard
+                    key={t.id}
+                    ticket={t}
+                    isPast={false}
+                    transactions={(myTransactions ?? []).filter(tx => tx.ticketId === t.id)}
+                  />
+                ))}
               </div>
             ) : <EmptyState />}
           </TabsContent>
@@ -319,7 +386,14 @@ export default function MyTickets() {
           <TabsContent value="past" className="mt-4">
             {past.length > 0 ? (
               <div className="space-y-3">
-                {past.map(t => <TicketCard key={t.id} ticket={t} isPast={true} />)}
+                {past.map(t => (
+                  <TicketCard
+                    key={t.id}
+                    ticket={t}
+                    isPast={true}
+                    transactions={(myTransactions ?? []).filter(tx => tx.ticketId === t.id)}
+                  />
+                ))}
               </div>
             ) : (
               <div className="text-center py-12 text-sm text-muted-foreground">

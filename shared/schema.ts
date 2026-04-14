@@ -99,3 +99,16 @@ export const oauthTokens = sqliteTable("oauth_tokens", {
 export const insertOAuthTokenSchema = createInsertSchema(oauthTokens).omit({ id: true, createdAt: true });
 export type InsertOAuthToken = z.infer<typeof insertOAuthTokenSchema>;
 export type OAuthToken = typeof oauthTokens.$inferSelect;
+
+// Transactions — peer-to-peer ticket transfer flow
+export const transactions = sqliteTable("transactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ticketId: integer("ticket_id").notNull(),
+  buyerName: text("buyer_name").notNull(),
+  buyerEmail: text("buyer_email").notNull(),
+  status: text("status").notNull().default("interested"), // "interested" | "ticket_transferred" | "payment_done"
+  createdAt: text("created_at").notNull().default(""),
+});
+export const insertTransactionSchema = createInsertSchema(transactions).omit({ id: true, createdAt: true });
+export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
+export type Transaction = typeof transactions.$inferSelect;

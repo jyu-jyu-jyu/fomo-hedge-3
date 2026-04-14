@@ -2,13 +2,14 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, like, asc, desc } from "drizzle-orm";
 import {
-  users, tickets, watchlist, conflicts, inboundEmails, oauthTokens,
+  users, tickets, watchlist, conflicts, inboundEmails, oauthTokens, transactions,
   type User, type InsertUser,
   type Ticket, type InsertTicket,
   type Watchlist, type InsertWatchlist,
   type Conflict, type InsertConflict,
   type InboundEmail, type InsertInboundEmail,
   type OAuthToken, type InsertOAuthToken,
+  type Transaction, type InsertTransaction,
 } from "@shared/schema";
 
 const sqlite = new Database("hbs-tix.db");
@@ -80,6 +81,15 @@ sqlite.exec(`
     expires_at TEXT,
     created_at TEXT NOT NULL DEFAULT ''
   );
+
+  CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    buyer_name TEXT NOT NULL,
+    buyer_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'interested',
+    created_at TEXT NOT NULL DEFAULT ''
+  );
 `);
 
 export interface IStorage {
@@ -116,6 +126,12 @@ export interface IStorage {
   saveOAuthToken(token: InsertOAuthToken): OAuthToken;
   getOAuthToken(userId: number, provider: string): OAuthToken | undefined;
   getConnectedProviders(userId: number): string[];
+
+  // Transactions
+  createTransaction(t: InsertTransaction): Transaction;
+  getTransactionsForTicket(ticketId: number): Transaction[];
+  updateTransactionStatus(id: number, status: string): void;
+  getTransactionsForUser(userId: number): Transaction[];
 }
 
 function now() {
@@ -210,5 +226,23 @@ export const storage: IStorage = {
       .where(eq(oauthTokens.userId, userId))
       .all()
       .map(t => t.provider);
+  },
+
+  // Transactions
+  createTransaction(t) {
+    return db.insert(transactions).values({ ...t, createdAt: now() }).returning().get();
+  },
+  getTransactionsForTicket(ticketId) {
+    return db.select().from(transactions).where(eq(transactions.ticketId, ticketId)).all();
+  },
+  updateTransactionStatus(id, status) {
+    db.update(transactions).set({ status }).where(eq(transactions.id, id)).run();
+  },
+  getTransactionsForUser(userId) {
+    // Get all ticket IDs owned by this user, then find transactions for those tickets
+    const userTickets = db.select().from(tickets).where(eq(tickets.userId, userId)).all();
+    const ticketIds = userTickets.map(t => t.id);
+    if (ticketIds.length === 0) return [];
+    return db.select().from(transactions).all().filter(t => ticketIds.includes(t.ticketId));
   },
 };

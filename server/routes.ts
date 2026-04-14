@@ -387,11 +387,45 @@ export function registerRoutes(httpServer: Server, app: Express) {
         eventType: sellers[0].eventType,
         totalListings: sellers.length,
         watchers,
-        topSellers: top2,
+        topSellers: top2.map(s => {
+        let sellerEmail = "hbs-student@hbs.edu";
+        let sellerName = "HBS Student";
+        if (s.userId === 999) { sellerEmail = "sarah.m@hbs.edu"; sellerName = "Sarah M."; }
+        else if (s.userId === 998) { sellerEmail = "james.k@hbs.edu"; sellerName = "James K."; }
+        else {
+          const u = storage.getUser(s.userId);
+          if (u) { sellerEmail = u.email; sellerName = u.name; }
+        }
+        return { ...s, sellerEmail, sellerName };
+      }),
       };
     });
 
     res.json(result);
+  });
+
+  // ── Transactions ────────────────────────────────────────────────────────────
+  // POST /api/transactions — buyer expresses interest
+  app.post("/api/transactions", (req, res) => {
+    try {
+      const { ticketId, buyerName, buyerEmail } = req.body;
+      const t = storage.createTransaction({ ticketId: parseInt(ticketId), buyerName, buyerEmail, status: "interested" });
+      res.json(t);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  // PATCH /api/transactions/:id/status — update status
+  app.patch("/api/transactions/:id/status", (req, res) => {
+    const { status } = req.body;
+    storage.updateTransactionStatus(parseInt(req.params.id), status);
+    res.json({ ok: true });
+  });
+
+  // GET /api/transactions/my-listings — get all transactions for user's tickets
+  app.get("/api/transactions/my-listings", (req, res) => {
+    const user = storage.getUserByEmail("demo@hbs.edu")!;
+    const t = storage.getTransactionsForUser(user.id);
+    res.json(t);
   });
 
   // ── Watchlist ──────────────────────────────────────────────────────────────

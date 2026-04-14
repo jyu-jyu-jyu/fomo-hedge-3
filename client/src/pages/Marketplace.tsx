@@ -10,14 +10,18 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Brain, Calendar, Tag, Eye, Mail, Loader2 } from "lucide-react";
+import { Search, Brain, Calendar, Tag, Eye, Mail, Loader2, Copy, CheckCircle2 } from "lucide-react";
 
 type TopSeller = {
   id: number;
+  userId: number;
   userLikelihood: number;
   aiLikelihood: number | null;
   askingPrice: number | null;
   pricePaid: number;
+  platform: string;
+  sellerName: string;
+  sellerEmail: string;
 };
 
 type MarketEvent = {
@@ -46,6 +50,15 @@ function eventTypeBadge(type: string) {
   return colors[type] || colors.other;
 }
 
+function maskEmail(email: string) {
+  // Show first letter + *** + @hbs.edu
+  const atIndex = email.indexOf("@");
+  if (atIndex <= 0) return email;
+  const local = email.slice(0, atIndex);
+  const domain = email.slice(atIndex); // includes @
+  return local.charAt(0) + "***" + domain;
+}
+
 function SellerCard({ seller, index }: { seller: TopSeller; index: number }) {
   const score = seller.aiLikelihood ?? seller.userLikelihood;
   const discount = seller.askingPrice && seller.pricePaid > 0
@@ -61,7 +74,8 @@ function SellerCard({ seller, index }: { seller: TopSeller; index: number }) {
           #{index + 1}
         </div>
         <div>
-          <div className="text-sm font-medium">Seller {index + 1}</div>
+          <div className="text-sm font-medium">{seller.sellerName}</div>
+          <div className="text-xs text-muted-foreground">{maskEmail(seller.sellerEmail)}</div>
           <div className={`text-xs px-1.5 py-0.5 rounded-full inline-flex items-center gap-1 mt-0.5 ${likelihoodClass(score)}`}>
             <Brain size={9} />{score}% likely to go
           </div>
@@ -76,6 +90,225 @@ function SellerCard({ seller, index }: { seller: TopSeller; index: number }) {
     </div>
   );
 }
+
+// ── Buy Dialog (3-step flow) ────────────────────────────────────────────────
+
+function BuyDialog({
+  event,
+  open,
+  onOpenChange,
+}: {
+  event: MarketEvent | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [step, setStep] = useState(1);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [transactionId, setTransactionId] = useState<number | null>(null);
+  const [selectedSeller, setSelectedSeller] = useState<TopSeller | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const reset = () => {
+    setStep(1);
+    setName("");
+    setEmail("");
+    setTransactionId(null);
+    setSelectedSeller(null);
+    setCopied(false);
+  };
+
+  const handleClose = (v: boolean) => {
+    if (!v) reset();
+    onOpenChange(v);
+  };
+
+  // Pick the first seller (lowest likelihood)
+  const seller = selectedSeller ?? event?.topSellers[0] ?? null;
+
+  const interestMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/transactions", data),
+    onSuccess: async (res: any) => {
+      const data = await res.json();
+      setTransactionId(data.id);
+      setSelectedSeller(seller);
+      setStep(2);
+    },
+    onError: () => {
+      toast({ title: "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/transactions/${id}/status`, { status }),
+    onSuccess: (_, vars) => {
+      if (vars.status === "ticket_transferred") {
+        setStep(3);
+      } else if (vars.status === "payment_done") {
+        toast({ title: "Transaction complete!", description: "Payment marked as done. Enjoy the event!" });
+        handleClose(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/marketplace"] });
+      }
+    },
+    onError: () => {
+      toast({ title: "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const submitInterest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!event || !seller) return;
+    interestMutation.mutate({
+      ticketId: seller.id,
+      buyerName: name,
+      buyerEmail: email,
+    });
+  };
+
+  const copyAmount = () => {
+    if (seller?.askingPrice) {
+      navigator.clipboard.writeText(String(seller.askingPrice));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent>
+        {step === 1 && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Buy a ticket</DialogTitle>
+              <DialogDescription>
+                Express interest in "{event?.eventName}". The seller will transfer the ticket to you first before you pay.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={submitInterest} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="buy-name">Your name</Label>
+                <Input
+                  id="buy-name"
+                  data-testid="input-buy-name"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  required
+                  placeholder="Alex Chen"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="buy-email">HBS email</Label>
+                <Input
+                  id="buy-email"
+                  data-testid="input-buy-email"
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  placeholder="alex@hbs.edu"
+                />
+              </div>
+              {seller && (
+                <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
+                  <div className="font-medium">You'll be connected with:</div>
+                  <div>{seller.sellerName} — {maskEmail(seller.sellerEmail)}</div>
+                  <div className="text-muted-foreground">Asking: ${seller.askingPrice ?? "TBD"} on {seller.platform}</div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
+                <Button type="submit" disabled={interestMutation.isPending}>
+                  {interestMutation.isPending && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+                  Express Interest
+                </Button>
+              </DialogFooter>
+            </form>
+          </>
+        )}
+
+        {step === 2 && seller && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Contact the seller</DialogTitle>
+              <DialogDescription>
+                Reach out to the seller and ask them to transfer the ticket to you first.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted/50 border border-border p-4 space-y-2">
+                <div className="font-medium text-sm">Seller contact info</div>
+                <div className="text-sm"><span className="text-muted-foreground">Name:</span> {seller.sellerName}</div>
+                <div className="text-sm flex items-center gap-2">
+                  <span className="text-muted-foreground">Email:</span>
+                  <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">{seller.sellerEmail}</span>
+                </div>
+              </div>
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 text-sm text-blue-900 dark:text-blue-200 space-y-2">
+                <div className="font-medium">Next steps:</div>
+                <ol className="list-decimal list-inside space-y-1 text-sm">
+                  <li>Contact {seller.sellerName} at <strong>{seller.sellerEmail}</strong></li>
+                  <li>Ask them to transfer the ticket on <strong>{seller.platform}</strong></li>
+                  <li>Once you have the ticket, click the button below</li>
+                </ol>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
+                <Button
+                  onClick={() => transactionId && statusMutation.mutate({ id: transactionId, status: "ticket_transferred" })}
+                  disabled={statusMutation.isPending}
+                >
+                  {statusMutation.isPending && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+                  I received the ticket
+                </Button>
+              </DialogFooter>
+            </div>
+          </>
+        )}
+
+        {step === 3 && seller && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Complete payment</DialogTitle>
+              <DialogDescription>
+                You've received the ticket. Now pay the seller via Venmo or PayPal.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted/50 border border-border p-4 space-y-3">
+                <div className="font-medium text-sm">Payment details</div>
+                <div className="text-sm"><span className="text-muted-foreground">Pay to:</span> {seller.sellerName}</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm"><span className="text-muted-foreground">Amount:</span> <span className="font-bold text-lg">${seller.askingPrice}</span></div>
+                  <Button size="sm" variant="outline" onClick={copyAmount} className="text-xs shrink-0">
+                    {copied ? <CheckCircle2 size={13} className="mr-1 text-green-500" /> : <Copy size={13} className="mr-1" />}
+                    {copied ? "Copied!" : "Copy amount"}
+                  </Button>
+                </div>
+              </div>
+              <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-4 text-sm text-green-900 dark:text-green-200">
+                Send <strong>${seller.askingPrice}</strong> to <strong>{seller.sellerName}</strong> via Venmo or PayPal, then mark as done.
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
+                <Button
+                  onClick={() => transactionId && statusMutation.mutate({ id: transactionId, status: "payment_done" })}
+                  disabled={statusMutation.isPending}
+                >
+                  {statusMutation.isPending && <Loader2 size={14} className="mr-1.5 animate-spin" />}
+                  Mark payment as done
+                </Button>
+              </DialogFooter>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Watch Dialog ────────────────────────────────────────────────────────────
 
 function WatchDialog({
   event,
@@ -149,10 +382,13 @@ function WatchDialog({
   );
 }
 
+// ── Main Marketplace Page ───────────────────────────────────────────────────
+
 export default function Marketplace() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [watchTarget, setWatchTarget] = useState<MarketEvent | null>(null);
+  const [buyTarget, setBuyTarget] = useState<MarketEvent | null>(null);
 
   const { data: events, isLoading } = useQuery<MarketEvent[]>({
     queryKey: ["/api/marketplace", debouncedSearch],
@@ -243,7 +479,7 @@ export default function Marketplace() {
                   <Button
                     size="sm"
                     className="w-full text-xs"
-                    onClick={() => setWatchTarget(event)}
+                    onClick={() => setBuyTarget(event)}
                     data-testid="contact-seller-btn"
                   >
                     <Mail size={13} className="mr-1.5" />
@@ -265,6 +501,7 @@ export default function Marketplace() {
       )}
 
       <WatchDialog event={watchTarget} open={!!watchTarget} onOpenChange={v => !v && setWatchTarget(null)} />
+      <BuyDialog event={buyTarget} open={!!buyTarget} onOpenChange={v => !v && setBuyTarget(null)} />
     </div>
   );
 }
