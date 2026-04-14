@@ -6,10 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, Ticket, ChevronDown, ChevronUp,
-  Tag, Brain, Calendar, DollarSign, X, Plus, CheckCircle2, Users, Send
+  Tag, Brain, Calendar, DollarSign, X, Plus, CheckCircle2, Users, Send, Mail,
 } from "lucide-react";
 
 type TicketWithConflicts = {
@@ -35,6 +40,100 @@ type Transaction = {
   status: string;
   createdAt: string;
 };
+
+type CurrentUser = {
+  id: number;
+  name: string;
+  email: string;
+  hbsEmail?: string | null;
+  classYear?: number | null;
+};
+
+// ── HBS Email Dialog ────────────────────────────────────────────────────────
+function HbsEmailDialog({
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [hbsEmail, setHbsEmail] = useState("");
+  const [error, setError] = useState("");
+
+  const saveMutation = useMutation({
+    mutationFn: (email: string) => apiRequest("PATCH", "/api/me", { hbsEmail: email }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      toast({ title: "HBS email saved!", description: "You can now list tickets for sale." });
+      onOpenChange(false);
+      onSaved();
+    },
+    onError: async (e: any) => {
+      const data = await e.response?.json?.().catch(() => null);
+      setError(data?.error || "Invalid HBS email address.");
+    },
+  });
+
+  const submit = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setError("");
+    if (!hbsEmail.endsWith("@hbs.edu")) {
+      setError("Must end in @hbs.edu");
+      return;
+    }
+    saveMutation.mutate(hbsEmail);
+  };
+
+  // Extract class year preview
+  const yearMatch = hbsEmail.match(/(\d{2})@hbs\.edu$/);
+  const yearPreview = yearMatch ? `Class of 20${yearMatch[1]}` : null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Enter your HBS email</DialogTitle>
+          <DialogDescription>
+            We need your HBS email to list your ticket so buyers can verify you're part of the community.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="hbs-email">HBS email address</Label>
+            <Input
+              id="hbs-email"
+              type="email"
+              value={hbsEmail}
+              onChange={e => { setHbsEmail(e.target.value); setError(""); }}
+              placeholder="jchen25@hbs.edu"
+              required
+            />
+            {yearPreview && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <CheckCircle2 size={11} className="text-green-500" />
+                Detected: <strong>{yearPreview}</strong>
+              </p>
+            )}
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+          <div className="rounded-lg bg-muted/50 border border-border px-3 py-2 text-xs text-muted-foreground">
+            <Mail size={11} className="inline mr-1" />
+            Your email will be partially masked (e.g. j***@hbs.edu) in the marketplace for privacy.
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={saveMutation.isPending}>
+              Save & continue
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function likelihoodClass(score: number) {
   if (score >= 65) return "likelihood-high";
@@ -67,7 +166,13 @@ function eventTypeBadge(type: string) {
   return colors[type] || colors.other;
 }
 
-function TicketCard({ ticket, isPast, transactions }: { ticket: TicketWithConflicts; isPast: boolean; transactions: Transaction[] }) {
+function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail }: {
+  ticket: TicketWithConflicts;
+  isPast: boolean;
+  transactions: Transaction[];
+  currentUser: CurrentUser | undefined;
+  onNeedHbsEmail: (cb: () => void) => void;
+}) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [likelihood, setLikelihood] = useState(ticket.userLikelihood);
@@ -90,7 +195,7 @@ function TicketCard({ ticket, isPast, transactions }: { ticket: TicketWithConfli
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tickets"] }),
   });
 
-  const toggleList = () => {
+  const doList = () => {
     const newListed = ticket.isListed === 1 ? 0 : 1;
     const askingPrice = newListed ? Math.round(ticket.pricePaid * 0.85) : null;
     updateMutation.mutate({ isListed: newListed, askingPrice });
@@ -100,6 +205,15 @@ function TicketCard({ ticket, isPast, transactions }: { ticket: TicketWithConfli
         ? `Listed at $${askingPrice} — visible to buyers in the marketplace.`
         : "Your ticket is no longer visible to buyers.",
     });
+  };
+
+  const toggleList = () => {
+    // If trying to list (not already listed) and user doesn't have an HBS email, collect it first
+    if (ticket.isListed === 0 && !currentUser?.hbsEmail) {
+      onNeedHbsEmail(doList);
+    } else {
+      doList();
+    }
   };
 
   const aiScore = ticket.aiLikelihood ?? ticket.userLikelihood;
@@ -291,6 +405,26 @@ export default function MyTickets() {
     queryKey: ["/api/transactions/my-listings"],
   });
 
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["/api/me"],
+  });
+
+  // HBS email dialog state
+  const [hbsDialogOpen, setHbsDialogOpen] = useState(false);
+  const [pendingListCallback, setPendingListCallback] = useState<(() => void) | null>(null);
+
+  const requestHbsEmail = (callback: () => void) => {
+    setPendingListCallback(() => callback);
+    setHbsDialogOpen(true);
+  };
+
+  const onHbsEmailSaved = () => {
+    if (pendingListCallback) {
+      pendingListCallback();
+      setPendingListCallback(null);
+    }
+  };
+
   const today = new Date().toISOString().split("T")[0];
   const upcoming = tickets?.filter(t => t.eventDate >= today) ?? [];
   const past = tickets?.filter(t => t.eventDate < today) ?? [];
@@ -377,6 +511,8 @@ export default function MyTickets() {
                     ticket={t}
                     isPast={false}
                     transactions={(myTransactions ?? []).filter(tx => tx.ticketId === t.id)}
+                    currentUser={currentUser}
+                    onNeedHbsEmail={requestHbsEmail}
                   />
                 ))}
               </div>
@@ -392,6 +528,8 @@ export default function MyTickets() {
                     ticket={t}
                     isPast={true}
                     transactions={(myTransactions ?? []).filter(tx => tx.ticketId === t.id)}
+                    currentUser={currentUser}
+                    onNeedHbsEmail={requestHbsEmail}
                   />
                 ))}
               </div>
@@ -403,6 +541,12 @@ export default function MyTickets() {
           </TabsContent>
         </Tabs>
       )}
+
+      <HbsEmailDialog
+        open={hbsDialogOpen}
+        onOpenChange={setHbsDialogOpen}
+        onSaved={onHbsEmailSaved}
+      />
     </div>
   );
 }

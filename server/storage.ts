@@ -92,11 +92,16 @@ sqlite.exec(`
   );
 `);
 
+// Add HBS email columns to existing users table if they don't exist yet
+try { sqlite.exec("ALTER TABLE users ADD COLUMN hbs_email TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN class_year INTEGER"); } catch {}
+
 export interface IStorage {
   // Users
   getUser(id: number): User | undefined;
   getUserByEmail(email: string): User | undefined;
   createUser(user: InsertUser): User;
+  updateUser(id: number, data: Partial<InsertUser>): User | undefined;
 
   // Tickets
   getTicket(id: number): Ticket | undefined;
@@ -148,6 +153,9 @@ export const storage: IStorage = {
   },
   createUser(user) {
     return db.insert(users).values({ ...user }).returning().get();
+  },
+  updateUser(id, data) {
+    return db.update(users).set(data).where(eq(users.id, id)).returning().get();
   },
 
   // Tickets

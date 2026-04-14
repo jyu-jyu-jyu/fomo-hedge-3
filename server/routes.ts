@@ -110,6 +110,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json(user);
   });
 
+  // PATCH /api/me — save user's HBS email + extract class year
+  app.patch("/api/me", (req, res) => {
+    try {
+      const user = storage.getUserByEmail("demo@hbs.edu");
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const { hbsEmail } = req.body as { hbsEmail: string };
+      if (!hbsEmail || !hbsEmail.endsWith("@hbs.edu")) {
+        return res.status(400).json({ error: "Must be a valid @hbs.edu email address" });
+      }
+      // Extract 2-digit class year from e.g. jchen25@hbs.edu → 25
+      const match = hbsEmail.match(/(\d{2})@hbs\.edu$/);
+      const classYear = match ? parseInt(match[1]) : null;
+      const updated = storage.updateUser(user.id, { hbsEmail, classYear: classYear ?? undefined });
+      res.json(updated);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
   // ── Connected accounts ─────────────────────────────────────────────────────
   app.get("/api/connections", (req, res) => {
     const user = storage.getUserByEmail("demo@hbs.edu")!;
@@ -390,13 +407,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
         topSellers: top2.map(s => {
         let sellerEmail = "hbs-student@hbs.edu";
         let sellerName = "HBS Student";
+        let classYear: number | null = null;
         if (s.userId === 999) { sellerEmail = "sarah.m@hbs.edu"; sellerName = "Sarah M."; }
         else if (s.userId === 998) { sellerEmail = "james.k@hbs.edu"; sellerName = "James K."; }
         else {
           const u = storage.getUser(s.userId);
-          if (u) { sellerEmail = u.email; sellerName = u.name; }
+          if (u) {
+            sellerEmail = u.hbsEmail || u.email;
+            sellerName = u.name;
+            classYear = u.classYear ?? null;
+          }
         }
-        return { ...s, sellerEmail, sellerName };
+        return { ...s, sellerEmail, sellerName, classYear };
       }),
       };
     });
@@ -406,10 +428,31 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ── Transactions ────────────────────────────────────────────────────────────
   // POST /api/transactions — buyer expresses interest
-  app.post("/api/transactions", (req, res) => {
+  app.post("/api/transactions", async (req, res) => {
     try {
       const { ticketId, buyerName, buyerEmail } = req.body;
       const t = storage.createTransaction({ ticketId: parseInt(ticketId), buyerName, buyerEmail, status: "interested" });
+
+      // Notify the seller by email
+      const ticket = storage.getTicket(parseInt(ticketId));
+      if (ticket) {
+        const seller = storage.getUser(ticket.userId);
+        const sellerEmail = seller?.hbsEmail || seller?.email || null;
+        if (sellerEmail) {
+          await sendEmail({
+            to: sellerEmail,
+            subject: `Someone wants to buy your ticket: ${ticket.eventName}`,
+            html: `
+              <p>Hi ${seller?.name ?? "there"},</p>
+              <p><strong>${buyerName}</strong> (${buyerEmail}) is interested in buying your ticket for <strong>${ticket.eventName}</strong> (${ticket.eventDate}).</p>
+              <p>Your asking price: <strong>$${ticket.askingPrice ?? "TBD"}</strong></p>
+              <p>They've been shown your contact info so they can reach out. Please transfer the ticket to them on <strong>${ticket.platform}</strong> before collecting payment.</p>
+              <p>— FomoHedge</p>
+            `,
+          });
+        }
+      }
+
       res.json(t);
     } catch (e: any) { res.status(400).json({ error: e.message }); }
   });
@@ -522,6 +565,27 @@ export function registerRoutes(httpServer: Server, app: Express) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.log(`[sendEmail] RESEND_API_KEY not set — would have emailed ${to}: ${subject}`);
+    return;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "FomoHedge <notifications@fomohedge.app>", to, subject, html }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("[sendEmail] Resend error:", err);
+    }
+  } catch (e) {
+    console.error("[sendEmail] fetch error:", e);
+  }
+}
 
 function computeAiLikelihood(data: { eventType: string; eventDate: string; pricePaid: number }): { score: number; reason: string } {
   let score = 65;

@@ -8,6 +8,8 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   forwardEmail: text("forward_email"), // their personal @fomohedge.com address
+  hbsEmail: text("hbs_email"),   // verified HBS email (e.g. jchen25@hbs.edu)
+  classYear: integer("class_year"), // e.g. 25 → Class of 2025
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });

@@ -22,6 +22,7 @@ type TopSeller = {
   platform: string;
   sellerName: string;
   sellerEmail: string;
+  classYear?: number | null;
 };
 
 type MarketEvent = {
@@ -74,7 +75,14 @@ function SellerCard({ seller, index }: { seller: TopSeller; index: number }) {
           #{index + 1}
         </div>
         <div>
-          <div className="text-sm font-medium">{seller.sellerName}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-medium">{seller.sellerName}</span>
+            {seller.classYear && (
+              <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                Class of 20{String(seller.classYear).padStart(2, "0")}
+              </span>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground">{maskEmail(seller.sellerEmail)}</div>
           <div className={`text-xs px-1.5 py-0.5 rounded-full inline-flex items-center gap-1 mt-0.5 ${likelihoodClass(score)}`}>
             <Brain size={9} />{score}% likely to go
