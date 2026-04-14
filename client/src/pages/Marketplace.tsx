@@ -52,7 +52,7 @@ function eventTypeBadge(type: string) {
 }
 
 function maskEmail(email: string) {
-  // Show first letter + *** + @hbs.edu
+  // Show first letter + *** + @hbsYYYY.hbs.edu (or full domain for other formats)
   const atIndex = email.indexOf("@");
   if (atIndex <= 0) return email;
   const local = email.slice(0, atIndex);
@@ -215,7 +215,7 @@ function BuyDialog({
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
-                  placeholder="alex@hbs.edu"
+                  placeholder="jsmith@hbs2027.hbs.edu"
                 />
               </div>
               {seller && (
@@ -371,7 +371,7 @@ function WatchDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="watch-email">HBS email</Label>
-            <Input id="watch-email" data-testid="input-watch-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="alex@hbs.edu" />
+            <Input id="watch-email" data-testid="input-watch-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="jsmith@hbs2027.hbs.edu" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="watch-budget">Max budget (optional)</Label>

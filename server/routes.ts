@@ -116,12 +116,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const user = storage.getUserByEmail("demo@hbs.edu");
       if (!user) return res.status(404).json({ error: "User not found" });
       const { hbsEmail } = req.body as { hbsEmail: string };
-      if (!hbsEmail || !hbsEmail.endsWith("@hbs.edu")) {
-        return res.status(400).json({ error: "Must be a valid @hbs.edu email address" });
+      // Format: name@hbs2027.hbs.edu
+      const match = hbsEmail?.match(/^[^@]+@hbs(\d{4})\.hbs\.edu$/i);
+      if (!match) {
+        return res.status(400).json({ error: "Must be a valid HBS email (e.g. jsmith@hbs2027.hbs.edu)" });
       }
-      // Extract 2-digit class year from e.g. jchen25@hbs.edu → 25
-      const match = hbsEmail.match(/(\d{2})@hbs\.edu$/);
-      const classYear = match ? parseInt(match[1]) : null;
+      // Extract 4-digit class year from domain e.g. hbs2027.hbs.edu → 2027
+      const classYear = parseInt(match[1]);
       const updated = storage.updateUser(user.id, { hbsEmail, classYear: classYear ?? undefined });
       res.json(updated);
     } catch (e: any) { res.status(400).json({ error: e.message }); }

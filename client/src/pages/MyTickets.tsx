@@ -80,16 +80,17 @@ function HbsEmailDialog({
   const submit = (ev: React.FormEvent) => {
     ev.preventDefault();
     setError("");
-    if (!hbsEmail.endsWith("@hbs.edu")) {
-      setError("Must end in @hbs.edu");
+    const match = hbsEmail.match(/^[^@]+@hbs(\d{4})\.hbs\.edu$/i);
+    if (!match) {
+      setError("Must be a valid HBS email (e.g. jsmith@hbs2027.hbs.edu)");
       return;
     }
     saveMutation.mutate(hbsEmail);
   };
 
-  // Extract class year preview
-  const yearMatch = hbsEmail.match(/(\d{2})@hbs\.edu$/);
-  const yearPreview = yearMatch ? `Class of 20${yearMatch[1]}` : null;
+  // Extract class year preview from domain e.g. hbs2027.hbs.edu → 2027
+  const yearMatch = hbsEmail.match(/^[^@]+@hbs(\d{4})\.hbs\.edu$/i);
+  const yearPreview = yearMatch ? `Class of ${yearMatch[1]}` : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -108,7 +109,7 @@ function HbsEmailDialog({
               type="email"
               value={hbsEmail}
               onChange={e => { setHbsEmail(e.target.value); setError(""); }}
-              placeholder="jchen25@hbs.edu"
+              placeholder="jsmith@hbs2027.hbs.edu"
               required
             />
             {yearPreview && (
@@ -121,7 +122,7 @@ function HbsEmailDialog({
           </div>
           <div className="rounded-lg bg-muted/50 border border-border px-3 py-2 text-xs text-muted-foreground">
             <Mail size={11} className="inline mr-1" />
-            Your email will be partially masked (e.g. j***@hbs.edu) in the marketplace for privacy.
+            Your email will be partially masked in the marketplace for privacy.
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
