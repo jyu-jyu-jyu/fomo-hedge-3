@@ -64,9 +64,9 @@ function Layout({ children }: { children: React.ReactNode }) {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
+            <NavLink href="/add"><Plus size={15} />Add Ticket</NavLink>
             <NavLink href="/"><Ticket size={15} />My Tickets</NavLink>
             <NavLink href="/marketplace"><ShoppingBag size={15} />Marketplace</NavLink>
-            <NavLink href="/add"><Plus size={15} />Add Ticket</NavLink>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -97,9 +97,9 @@ function Layout({ children }: { children: React.ReactNode }) {
         {/* Mobile nav */}
         {mobileOpen && (
           <div className="md:hidden border-t border-border bg-card px-4 py-3 flex flex-col gap-1">
+            <NavLink href="/add"><Plus size={15} />Add Ticket</NavLink>
             <NavLink href="/"><Ticket size={15} />My Tickets</NavLink>
             <NavLink href="/marketplace"><ShoppingBag size={15} />Marketplace</NavLink>
-            <NavLink href="/add"><Plus size={15} />Add Ticket</NavLink>
           </div>
         )}
       </header>
