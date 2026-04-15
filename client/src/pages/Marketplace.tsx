@@ -252,31 +252,77 @@ function BuyDialog({
           </>
         )}
 
-        {step === 2 && seller && (
+        {step === 2 && seller && event && (
           <>
             <DialogHeader>
-              <DialogTitle>Contact the seller</DialogTitle>
+              <DialogTitle>Email the seller</DialogTitle>
               <DialogDescription>
-                Reach out to the seller and ask them to transfer the ticket to you first.
+                {seller.listingType === "passive"
+                  ? "This seller hasn't listed yet — your message should gauge their interest first."
+                  : "Copy and send this email to the seller. They transfer the ticket before you pay."}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="rounded-lg bg-muted/50 border border-border p-4 space-y-2">
-                <div className="font-medium text-sm">Seller contact info</div>
-                <div className="text-sm"><span className="text-muted-foreground">Name:</span> {seller.sellerName}</div>
-                <div className="text-sm flex items-center gap-2">
-                  <span className="text-muted-foreground">Email:</span>
-                  <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">{seller.sellerEmail}</span>
+              {/* Seller contact row */}
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 border border-border px-4 py-3">
+                <div>
+                  <div className="text-sm font-medium">{seller.sellerName}</div>
+                  <div className="text-xs font-mono text-muted-foreground">{seller.sellerEmail}</div>
                 </div>
+                <Button
+                  size="sm" variant="outline" className="text-xs shrink-0"
+                  onClick={() => { navigator.clipboard.writeText(seller.sellerEmail); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                >
+                  {copied ? <CheckCircle2 size={12} className="mr-1 text-green-500" /> : <Copy size={12} className="mr-1" />}
+                  {copied ? "Copied!" : "Copy email"}
+                </Button>
               </div>
-              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 text-sm text-blue-900 dark:text-blue-200 space-y-2">
-                <div className="font-medium">Next steps:</div>
-                <ol className="list-decimal list-inside space-y-1 text-sm">
-                  <li>Contact {seller.sellerName} at <strong>{seller.sellerEmail}</strong></li>
-                  <li>Ask them to transfer the ticket on <strong>{seller.platform}</strong></li>
-                  <li>Once you have the ticket, click the button below</li>
-                </ol>
-              </div>
+
+              {/* Generated email */}
+              {(() => {
+                const isPassive = seller.listingType === "passive";
+                const discount = seller.askingPrice && seller.pricePaid > 0
+                  ? Math.round((1 - seller.askingPrice / seller.pricePaid) * 100)
+                  : 0;
+
+                const emailBody = isPassive
+                  ? `Hi ${seller.sellerName.split(" ")[0]},
+
+I came across your ticket for ${event.eventName} on FomoHedge and saw you might be open to selling it. Would you consider letting it go?
+
+I'm genuinely interested and happy to discuss a fair price. Please transfer the ticket to me first and I'll pay you right after — that way it's safe for both of us.
+
+Let me know if you're open to it!
+
+${name}`
+                  : `Hi ${seller.sellerName.split(" ")[0]},
+
+I'm interested in buying your ticket for ${event.eventName}${seller.askingPrice ? ` at $${seller.askingPrice}` : ""}${discount > 0 ? ` (${discount}% off the original $${seller.pricePaid})` : ""}.
+
+Could you transfer the ticket to me on ${seller.platform} first? I'll pay you immediately after — this protects us both.
+
+Thanks!
+${name}`;
+
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">Suggested email</span>
+                      <Button
+                        size="sm" variant="outline" className="text-xs h-7"
+                        onClick={() => { navigator.clipboard.writeText(emailBody); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                      >
+                        {copied ? <CheckCircle2 size={12} className="mr-1 text-green-500" /> : <Copy size={12} className="mr-1" />}
+                        {copied ? "Copied!" : "Copy email"}
+                      </Button>
+                    </div>
+                    <pre className="text-xs whitespace-pre-wrap bg-muted/50 border border-border rounded-lg p-3 leading-relaxed font-sans">
+                      {emailBody}
+                    </pre>
+                  </div>
+                );
+              })()}
+
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
                 <Button
