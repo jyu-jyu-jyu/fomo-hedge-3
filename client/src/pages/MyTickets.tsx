@@ -302,7 +302,10 @@ function TicketCard({ ticket, isPast, transactions, currentUser, onNeedHbsEmail,
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<any>) => apiRequest("PATCH", `/api/tickets/${ticket.id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tickets"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/marketplace"] });
+    },
   });
 
   const markTransferredMutation = useMutation({
