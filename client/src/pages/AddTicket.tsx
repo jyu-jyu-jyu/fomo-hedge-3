@@ -32,7 +32,7 @@ function ManualForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       toast({ title: "Ticket added!", description: "Head to My Tickets to set your likelihood." });
-      navigate("/");
+      navigate("/my-tickets");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -237,7 +237,7 @@ function EmailForwardTab() {
               </div>
             )}
             {result.created && (
-              <button onClick={() => navigate("/")} className="mt-2 text-xs text-primary underline">
+              <button onClick={() => navigate("/my-tickets")} className="mt-2 text-xs text-primary underline">
                 View in My Tickets →
               </button>
             )}
@@ -356,7 +356,7 @@ function ScreenshotTab() {
       {result?.ok && (
         <div className="rounded-md p-3 bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800 flex items-center gap-2 text-sm text-green-800 dark:text-green-300">
           <CheckCircle size={14} />
-          Ticket imported! <button onClick={() => navigate("/")} className="underline ml-1">View in My Tickets →</button>
+          Ticket imported! <button onClick={() => navigate("/my-tickets")} className="underline ml-1">View in My Tickets →</button>
         </div>
       )}
     </div>
@@ -533,13 +533,13 @@ export default function AddTicket() {
       const params = new URLSearchParams(hash.slice(qIdx + 1));
       if (params.has("connected") || params.has("error")) return "import";
     }
-    return "manual";
+    return "import";
   })();
 
   return (
     <div className="max-w-lg mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="text-muted-foreground -ml-2">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/my-tickets")} className="text-muted-foreground -ml-2">
           <ArrowLeft size={15} className="mr-1" />Back
         </Button>
       </div>
@@ -553,6 +553,9 @@ export default function AddTicket() {
 
       <Tabs defaultValue={defaultTab}>
         <TabsList className="w-full grid grid-cols-4">
+          <TabsTrigger value="import" data-testid="tab-import">
+            <Plug size={13} className="mr-1.5" />Import
+          </TabsTrigger>
           <TabsTrigger value="manual" data-testid="tab-manual">
             <PenLine size={13} className="mr-1.5" />Manual
           </TabsTrigger>
@@ -562,10 +565,17 @@ export default function AddTicket() {
           <TabsTrigger value="screenshot" data-testid="tab-screenshot">
             <Camera size={13} className="mr-1.5" />Photo
           </TabsTrigger>
-          <TabsTrigger value="import" data-testid="tab-import">
-            <Plug size={13} className="mr-1.5" />Import
-          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="import" className="mt-5">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Connected accounts</CardTitle>
+              <CardDescription>Log in once, sync all your events automatically</CardDescription>
+            </CardHeader>
+            <CardContent><ImportTab /></CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="manual" className="mt-5">
           <Card>
@@ -594,16 +604,6 @@ export default function AddTicket() {
               <CardDescription>Great for WhatsApp confirmations, Partiful invites, or anything without an email</CardDescription>
             </CardHeader>
             <CardContent><ScreenshotTab /></CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="import" className="mt-5">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Connected accounts</CardTitle>
-              <CardDescription>Log in once, sync all your events automatically</CardDescription>
-            </CardHeader>
-            <CardContent><ImportTab /></CardContent>
           </Card>
         </TabsContent>
       </Tabs>

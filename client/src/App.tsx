@@ -64,8 +64,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            <NavLink href="/add"><Plus size={15} />Add Ticket</NavLink>
-            <NavLink href="/"><Ticket size={15} />My Tickets</NavLink>
+            <NavLink href="/"><Plus size={15} />Add Ticket</NavLink>
+            <NavLink href="/my-tickets"><Ticket size={15} />My Tickets</NavLink>
             <NavLink href="/marketplace"><ShoppingBag size={15} />Marketplace</NavLink>
           </nav>
 
@@ -97,8 +97,8 @@ function Layout({ children }: { children: React.ReactNode }) {
         {/* Mobile nav */}
         {mobileOpen && (
           <div className="md:hidden border-t border-border bg-card px-4 py-3 flex flex-col gap-1">
-            <NavLink href="/add"><Plus size={15} />Add Ticket</NavLink>
-            <NavLink href="/"><Ticket size={15} />My Tickets</NavLink>
+            <NavLink href="/"><Plus size={15} />Add Ticket</NavLink>
+            <NavLink href="/my-tickets"><Ticket size={15} />My Tickets</NavLink>
             <NavLink href="/marketplace"><ShoppingBag size={15} />Marketplace</NavLink>
           </div>
         )}
@@ -122,9 +122,9 @@ export default function App() {
       <Router hook={useHashLocationStripped}>
         <Layout>
           <Switch>
-            <Route path="/" component={MyTickets} />
+            <Route path="/" component={AddTicket} />
+            <Route path="/my-tickets" component={MyTickets} />
             <Route path="/marketplace" component={Marketplace} />
-            <Route path="/add" component={AddTicket} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

@@ -532,7 +532,7 @@ function EmptyState() {
       <Ticket size={36} className="mx-auto text-muted-foreground/50 mb-3" />
       <p className="font-medium">No tickets yet</p>
       <p className="text-sm text-muted-foreground mt-1">Add your first event to get started</p>
-      <Link href="/add">
+      <Link href="/">
         <Button className="mt-4" size="sm">
           <Plus size={14} className="mr-1.5" />Add your first ticket
         </Button>
@@ -594,7 +594,7 @@ export default function MyTickets() {
             Track your events and manage resale likelihood
           </p>
         </div>
-        <Link href="/add">
+        <Link href="/">
           <Button size="sm" data-testid="add-ticket-btn">
             <Plus size={15} className="mr-1" />Add Ticket
           </Button>
