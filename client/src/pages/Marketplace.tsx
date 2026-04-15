@@ -284,13 +284,19 @@ function BuyDialog({
                 const discount = seller.askingPrice && seller.pricePaid > 0
                   ? Math.round((1 - seller.askingPrice / seller.pricePaid) * 100)
                   : 0;
+                const suggestedPrice = seller.askingPrice ?? (seller.pricePaid > 0 ? Math.round(seller.pricePaid * 0.85) : null);
+                const suggestedDiscount = suggestedPrice && seller.pricePaid > 0
+                  ? Math.round((1 - suggestedPrice / seller.pricePaid) * 100)
+                  : 0;
 
                 const emailBody = isPassive
                   ? `Hi ${seller.sellerName.split(" ")[0]},
 
-I came across your ticket for ${event.eventName} on FomoHedge and saw you might be open to selling it. Would you consider letting it go?
+I came across your ticket for ${event.eventName} on FomoHedge and saw you might be open to selling it. Would you consider letting it go?${suggestedPrice ? `
 
-I'm genuinely interested and happy to discuss a fair price. Please transfer the ticket to me first and I'll pay you right after — that way it's safe for both of us.
+I'd suggest $${suggestedPrice}${suggestedDiscount > 0 ? ` (${suggestedDiscount}% off what you paid)` : ""} as a starting point — happy to discuss.` : ""}
+
+Please transfer the ticket to me first and I'll pay you right after — that way it's safe for both of us.
 
 Let me know if you're open to it!
 
