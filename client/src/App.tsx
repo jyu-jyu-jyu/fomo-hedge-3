@@ -123,6 +123,7 @@ export default function App() {
         <Layout>
           <Switch>
             <Route path="/" component={AddTicket} />
+            <Route path="/add" component={AddTicket} />
             <Route path="/my-tickets" component={MyTickets} />
             <Route path="/marketplace" component={Marketplace} />
             <Route component={NotFound} />

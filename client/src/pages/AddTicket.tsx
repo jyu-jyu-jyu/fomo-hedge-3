@@ -381,7 +381,7 @@ function ImportTab() {
     if (connected) {
       setJustConnected(connected);
       toast({ title: `${connected.charAt(0).toUpperCase() + connected.slice(1)} connected!`, description: "Click Sync to import your events." });
-      window.history.replaceState(null, "", "/#/add");
+      window.history.replaceState(null, "", "/#/");
     }
     if (error) {
       const messages: Record<string, string> = {
@@ -391,7 +391,7 @@ function ImportTab() {
         auth_failed: "Authentication was cancelled or failed",
       };
       toast({ title: "Connection failed", description: messages[error] || error, variant: "destructive" });
-      window.history.replaceState(null, "", "/#/add");
+      window.history.replaceState(null, "", "/#/");
     }
   }, []);
 
