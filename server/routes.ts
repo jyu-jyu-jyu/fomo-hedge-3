@@ -382,45 +382,64 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── Marketplace ────────────────────────────────────────────────────────────
+  const PASSIVE_THRESHOLD = 40; // AI score at or below this → "might sell"
+
   app.get("/api/marketplace", (req, res) => {
     const query = (req.query.q as string) || "";
-    const listed = query
+
+    // Active: seller explicitly listed
+    const activeListed = query
       ? storage.searchListedTickets(query)
       : storage.getAllListedTickets();
 
-    // For each event, group by event name and return top 2 lowest likelihood sellers
-    const grouped: Record<string, typeof listed> = {};
-    for (const t of listed) {
+    // Passive: unlisted but AI likelihood ≤ threshold
+    const passiveListed = storage.getLowLikelihoodTickets(PASSIVE_THRESHOLD)
+      .filter(t => !query || t.eventName.toLowerCase().includes(query.toLowerCase()));
+
+    // Tag and combine — active takes priority (dedup by ticket id)
+    type Tagged = (typeof activeListed)[number] & { listingType: "active" | "passive" };
+    const activeTagged: Tagged[] = activeListed.map(t => ({ ...t, listingType: "active" as const }));
+    const activeIds = new Set(activeListed.map(t => t.id));
+    const passiveTagged: Tagged[] = passiveListed
+      .filter(t => !activeIds.has(t.id))
+      .map(t => ({ ...t, listingType: "passive" as const }));
+    const allTickets = [...activeTagged, ...passiveTagged];
+
+    // Group by event name
+    const grouped: Record<string, Tagged[]> = {};
+    for (const t of allTickets) {
       if (!grouped[t.eventName]) grouped[t.eventName] = [];
       grouped[t.eventName].push(t);
     }
+
+    const enrichSeller = (s: Tagged) => {
+      let sellerEmail = "hbs-student@hbs.edu";
+      let sellerName = "HBS Student";
+      let classYear: number | null = null;
+      if (s.userId === 999) { sellerEmail = "sarah.m@hbs.edu"; sellerName = "Sarah M."; }
+      else if (s.userId === 998) { sellerEmail = "james.k@hbs.edu"; sellerName = "James K."; }
+      else {
+        const u = storage.getUser(s.userId);
+        if (u) { sellerEmail = u.hbsEmail || u.email; sellerName = u.name; classYear = u.classYear ?? null; }
+      }
+      return { ...s, sellerEmail, sellerName, classYear };
+    };
 
     const result = Object.entries(grouped).map(([eventName, sellers]) => {
       const sorted = sellers.sort((a, b) => (a.aiLikelihood ?? a.userLikelihood) - (b.aiLikelihood ?? b.userLikelihood));
       const top2 = sorted.slice(0, 2);
       const watchers = storage.getWatchlistForEvent(eventName).length;
+      const activeCount = sellers.filter(s => s.listingType === "active").length;
+      const passiveCount = sellers.filter(s => s.listingType === "passive").length;
       return {
         eventName,
         eventDate: sellers[0].eventDate,
         eventType: sellers[0].eventType,
         totalListings: sellers.length,
+        activeListings: activeCount,
+        passiveListings: passiveCount,
         watchers,
-        topSellers: top2.map(s => {
-        let sellerEmail = "hbs-student@hbs.edu";
-        let sellerName = "HBS Student";
-        let classYear: number | null = null;
-        if (s.userId === 999) { sellerEmail = "sarah.m@hbs.edu"; sellerName = "Sarah M."; }
-        else if (s.userId === 998) { sellerEmail = "james.k@hbs.edu"; sellerName = "James K."; }
-        else {
-          const u = storage.getUser(s.userId);
-          if (u) {
-            sellerEmail = u.hbsEmail || u.email;
-            sellerName = u.name;
-            classYear = u.classYear ?? null;
-          }
-        }
-        return { ...s, sellerEmail, sellerName, classYear };
-      }),
+        topSellers: top2.map(enrichSeller),
       };
     });
 

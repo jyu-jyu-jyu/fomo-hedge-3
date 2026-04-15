@@ -107,6 +107,7 @@ export interface IStorage {
   getTicket(id: number): Ticket | undefined;
   getTicketsByUser(userId: number): Ticket[];
   getAllListedTickets(): Ticket[];
+  getLowLikelihoodTickets(threshold: number): Ticket[];
   searchListedTickets(query: string): Ticket[];
   createTicket(ticket: InsertTicket): Ticket;
   updateTicket(id: number, data: Partial<InsertTicket>): Ticket | undefined;
@@ -167,6 +168,14 @@ export const storage: IStorage = {
   },
   getAllListedTickets() {
     return db.select().from(tickets).where(eq(tickets.isListed, 1)).orderBy(asc(tickets.eventDate)).all();
+  },
+  getLowLikelihoodTickets(threshold) {
+    // Unlisted tickets whose AI-predicted likelihood is at or below the threshold
+    return db.select().from(tickets)
+      .where(eq(tickets.isListed, 0))
+      .orderBy(asc(tickets.eventDate))
+      .all()
+      .filter(t => t.aiLikelihood !== null && t.aiLikelihood <= threshold);
   },
   searchListedTickets(query) {
     return db.select().from(tickets)

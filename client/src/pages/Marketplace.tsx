@@ -26,6 +26,7 @@ type TopSeller = {
   sellerName: string;
   sellerEmail: string;
   classYear?: number | null;
+  listingType: "active" | "passive";
 };
 
 type MarketEvent = {
@@ -33,6 +34,8 @@ type MarketEvent = {
   eventDate: string;
   eventType: string;
   totalListings: number;
+  activeListings: number;
+  passiveListings: number;
   watchers: number;
   topSellers: TopSeller[];
 };
@@ -68,21 +71,31 @@ function SellerCard({ seller, index }: { seller: TopSeller; index: number }) {
   const discount = seller.askingPrice && seller.pricePaid > 0
     ? Math.round((1 - seller.askingPrice / seller.pricePaid) * 100)
     : 0;
+  const isPassive = seller.listingType === "passive";
   return (
     <div
-      className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/50 border border-border"
+      className={`flex items-center justify-between gap-3 p-3 rounded-lg border ${isPassive ? "bg-muted/20 border-dashed border-border" : "bg-muted/50 border-border"}`}
       data-testid={`seller-card-${seller.id}`}
     >
       <div className="flex items-center gap-3">
-        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${isPassive ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"}`}>
           #{index + 1}
         </div>
         <div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-medium">{seller.sellerName}</span>
             {seller.classYear && (
               <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
                 Class of {seller.classYear}
+              </span>
+            )}
+            {isPassive ? (
+              <span className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 px-1.5 py-0.5 rounded-full font-medium">
+                Might sell
+              </span>
+            ) : (
+              <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded-full font-medium">
+                Listed
               </span>
             )}
           </div>
@@ -93,7 +106,7 @@ function SellerCard({ seller, index }: { seller: TopSeller; index: number }) {
         </div>
       </div>
       <div className="text-right">
-        <div className="font-bold text-base">${seller.askingPrice ?? "—"}</div>
+        <div className="font-bold text-base">{seller.askingPrice ? `$${seller.askingPrice}` : <span className="text-muted-foreground text-sm">No price set</span>}</div>
         {discount > 0 && (
           <div className="text-xs text-green-700 dark:text-green-400 font-medium">{discount}% off</div>
         )}
@@ -410,6 +423,7 @@ export default function Marketplace() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("any");
   const [sortBy, setSortBy] = useState<string>("default");
+  const [listingTypeFilter, setListingTypeFilter] = useState<string>("all");
 
   const { data: events, isLoading } = useQuery<MarketEvent[]>({
     queryKey: ["/api/marketplace", debouncedSearch],
@@ -429,6 +443,7 @@ export default function Marketplace() {
   // Apply filters + sort client-side
   const filteredEvents = (events ?? [])
     .filter(e => typeFilter === "all" || e.eventType === typeFilter)
+    .filter(e => listingTypeFilter === "all" || (listingTypeFilter === "active" ? e.activeListings > 0 : e.passiveListings > 0))
     .filter(e => {
       if (dateFilter === "any") return true;
       const days = Math.ceil((new Date(e.eventDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -453,7 +468,7 @@ export default function Marketplace() {
       return 0; // default: server order
     });
 
-  const activeFilterCount = (typeFilter !== "all" ? 1 : 0) + (dateFilter !== "any" ? 1 : 0) + (sortBy !== "default" ? 1 : 0);
+  const activeFilterCount = (typeFilter !== "all" ? 1 : 0) + (dateFilter !== "any" ? 1 : 0) + (sortBy !== "default" ? 1 : 0) + (listingTypeFilter !== "all" ? 1 : 0);
 
   const displayDate = (d: string) =>
     new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -502,6 +517,30 @@ export default function Marketplace() {
           ))}
         </div>
 
+        {/* Listing type */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground font-medium shrink-0">Sellers:</span>
+          {[
+            { value: "all", label: "All sellers" },
+            { value: "active", label: "Listed for sale" },
+            { value: "passive", label: "Might sell" },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setListingTypeFilter(opt.value)}
+              className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
+                listingTypeFilter === opt.value
+                  ? opt.value === "active" ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/40 dark:text-green-300 dark:border-green-700"
+                    : opt.value === "passive" ? "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-700"
+                    : "bg-primary text-primary-foreground border-primary"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {/* Date range + Sort */}
         <div className="flex items-center gap-2">
           <SlidersHorizontal size={13} className="text-muted-foreground shrink-0" />
@@ -533,7 +572,7 @@ export default function Marketplace() {
 
           {activeFilterCount > 0 && (
             <button
-              onClick={() => { setTypeFilter("all"); setDateFilter("any"); setSortBy("default"); }}
+              onClick={() => { setTypeFilter("all"); setDateFilter("any"); setSortBy("default"); setListingTypeFilter("all"); }}
               className="text-xs text-muted-foreground hover:text-foreground underline ml-1 shrink-0"
             >
               Clear {activeFilterCount > 1 ? `${activeFilterCount} filters` : "filter"}
@@ -562,7 +601,12 @@ export default function Marketplace() {
                     </div>
                     <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1"><Calendar size={11} />{displayDate(event.eventDate)}</span>
-                      <span className="flex items-center gap-1"><Tag size={11} />{event.totalListings} listing{event.totalListings !== 1 ? "s" : ""}</span>
+                      <span className="flex items-center gap-1">
+                        <Tag size={11} />
+                        {event.activeListings > 0 && <span className="text-green-700 dark:text-green-400">{event.activeListings} listed</span>}
+                        {event.activeListings > 0 && event.passiveListings > 0 && <span>·</span>}
+                        {event.passiveListings > 0 && <span className="text-orange-600 dark:text-orange-400">{event.passiveListings} might sell</span>}
+                      </span>
                       <span className="flex items-center gap-1"><Eye size={11} />{event.watchers} watching</span>
                     </div>
                   </div>
