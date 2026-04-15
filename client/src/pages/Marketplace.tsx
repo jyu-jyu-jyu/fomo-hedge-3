@@ -10,7 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Brain, Calendar, Tag, Eye, Mail, Loader2, Copy, CheckCircle2 } from "lucide-react";
+import { Search, Brain, Calendar, Tag, Eye, Mail, Loader2, Copy, CheckCircle2, SlidersHorizontal, ArrowUpDown } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 
 type TopSeller = {
   id: number;
@@ -392,11 +395,21 @@ function WatchDialog({
 
 // ── Main Marketplace Page ───────────────────────────────────────────────────
 
+const EVENT_TYPES = ["party", "trek", "conference", "career", "other"] as const;
+const TYPE_LABELS: Record<string, string> = {
+  party: "Party", trek: "Trek", conference: "Conference", career: "Career", other: "Other",
+};
+
 export default function Marketplace() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [watchTarget, setWatchTarget] = useState<MarketEvent | null>(null);
   const [buyTarget, setBuyTarget] = useState<MarketEvent | null>(null);
+
+  // Filters
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("any");
+  const [sortBy, setSortBy] = useState<string>("default");
 
   const { data: events, isLoading } = useQuery<MarketEvent[]>({
     queryKey: ["/api/marketplace", debouncedSearch],
@@ -412,6 +425,35 @@ export default function Marketplace() {
     clearTimeout((window as any)._searchTimer);
     (window as any)._searchTimer = setTimeout(() => setDebouncedSearch(v), 300);
   };
+
+  // Apply filters + sort client-side
+  const filteredEvents = (events ?? [])
+    .filter(e => typeFilter === "all" || e.eventType === typeFilter)
+    .filter(e => {
+      if (dateFilter === "any") return true;
+      const days = Math.ceil((new Date(e.eventDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      if (dateFilter === "7") return days <= 7 && days >= 0;
+      if (dateFilter === "30") return days <= 30 && days >= 0;
+      if (dateFilter === "90") return days <= 90 && days >= 0;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === "price-asc") {
+        const aMin = Math.min(...a.topSellers.map(s => s.askingPrice ?? Infinity));
+        const bMin = Math.min(...b.topSellers.map(s => s.askingPrice ?? Infinity));
+        return aMin - bMin;
+      }
+      if (sortBy === "price-desc") {
+        const aMin = Math.min(...a.topSellers.map(s => s.askingPrice ?? 0));
+        const bMin = Math.min(...b.topSellers.map(s => s.askingPrice ?? 0));
+        return bMin - aMin;
+      }
+      if (sortBy === "popular") return b.watchers - a.watchers;
+      if (sortBy === "date-asc") return a.eventDate.localeCompare(b.eventDate);
+      return 0; // default: server order
+    });
+
+  const activeFilterCount = (typeFilter !== "all" ? 1 : 0) + (dateFilter !== "any" ? 1 : 0) + (sortBy !== "default" ? 1 : 0);
 
   const displayDate = (d: string) =>
     new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -438,14 +480,76 @@ export default function Marketplace() {
         />
       </div>
 
+      {/* Filters */}
+      <div className="space-y-3">
+        {/* Event type pills */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground font-medium shrink-0">Type:</span>
+          <button
+            onClick={() => setTypeFilter("all")}
+            className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${typeFilter === "all" ? "bg-primary text-primary-foreground border-primary" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}
+          >
+            All
+          </button>
+          {EVENT_TYPES.map(t => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(typeFilter === t ? "all" : t)}
+              className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${typeFilter === t ? `${eventTypeBadge(t)} border-transparent` : "border-border bg-card text-muted-foreground hover:text-foreground"}`}
+            >
+              {TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+
+        {/* Date range + Sort */}
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal size={13} className="text-muted-foreground shrink-0" />
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="h-8 text-xs w-36">
+              <SelectValue placeholder="Any date" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Any date</SelectItem>
+              <SelectItem value="7">Within 1 week</SelectItem>
+              <SelectItem value="30">Within 30 days</SelectItem>
+              <SelectItem value="90">Within 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <ArrowUpDown size={13} className="text-muted-foreground shrink-0 ml-1" />
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="h-8 text-xs w-40">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Most likely to bail</SelectItem>
+              <SelectItem value="popular">Most watched</SelectItem>
+              <SelectItem value="date-asc">Soonest first</SelectItem>
+              <SelectItem value="price-asc">Lowest price</SelectItem>
+              <SelectItem value="price-desc">Highest price</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => { setTypeFilter("all"); setDateFilter("any"); setSortBy("default"); }}
+              className="text-xs text-muted-foreground hover:text-foreground underline ml-1 shrink-0"
+            >
+              Clear {activeFilterCount > 1 ? `${activeFilterCount} filters` : "filter"}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Results */}
       {isLoading ? (
         <div className="space-y-4">
           {[1,2].map(i => <div key={i} className="h-52 rounded-lg bg-muted animate-pulse" />)}
         </div>
-      ) : events && events.length > 0 ? (
+      ) : filteredEvents.length > 0 ? (
         <div className="space-y-4">
-          {events.map(event => (
+          {filteredEvents.map(event => (
             <Card key={event.eventName} className="ticket-card border-border bg-card" data-testid={`market-event-${event.eventName.replace(/\s/g, "-")}`}>
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-3">
@@ -503,7 +607,7 @@ export default function Marketplace() {
           <Search size={36} className="mx-auto text-muted-foreground/50 mb-3" />
           <p className="font-medium">No listings found</p>
           <p className="text-sm text-muted-foreground mt-1">
-            {debouncedSearch ? `No events match "${debouncedSearch}"` : "No tickets are currently listed for sale"}
+            {debouncedSearch ? `No events match "${debouncedSearch}"` : activeFilterCount > 0 ? "No events match your filters" : "No tickets are currently listed for sale"}
           </p>
         </div>
       )}
