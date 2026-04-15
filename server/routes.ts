@@ -140,7 +140,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
     if (provider === "eventbrite") {
       const cfg = OAUTH_CONFIG.eventbrite;
-      if (!cfg.clientId) return res.redirect("/#/add?error=eventbrite_not_configured");
+      if (!cfg.clientId) return res.redirect("/#/?error=eventbrite_not_configured");
       const url = new URL(cfg.authUrl);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("client_id", cfg.clientId);
@@ -150,7 +150,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
     if (provider === "outlook") {
       const cfg = OAUTH_CONFIG.outlook;
-      if (!cfg.clientId) return res.redirect("/#/add?error=outlook_not_configured");
+      if (!cfg.clientId) return res.redirect("/#/?error=outlook_not_configured");
       const url = new URL(cfg.authUrl);
       url.searchParams.set("client_id", cfg.clientId);
       url.searchParams.set("response_type", "code");
@@ -169,7 +169,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const { code, error } = req.query as Record<string, string>;
 
     if (error || !code) {
-      return res.redirect(`/#/add?error=${error || "auth_failed"}`);
+      return res.redirect(`/#/?error=${error || "auth_failed"}`);
     }
 
     try {
@@ -203,11 +203,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
         });
         tokenData = await r.json();
       } else {
-        return res.redirect("/#/add?error=unknown_provider");
+        return res.redirect("/#/?error=unknown_provider");
       }
 
       if (!tokenData?.access_token) {
-        return res.redirect("/#/add?error=token_exchange_failed");
+        return res.redirect("/#/?error=token_exchange_failed");
       }
 
       const user = storage.getUserByEmail("demo@hbs.edu")!;
@@ -221,9 +221,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
           : null,
       });
 
-      res.redirect(`/#/add?connected=${provider}`);
+      res.redirect(`/#/?connected=${provider}`);
     } catch (e: any) {
-      res.redirect("/#/add?error=token_exchange_failed");
+      res.redirect("/#/?error=token_exchange_failed");
     }
   });
 
